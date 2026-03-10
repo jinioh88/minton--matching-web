@@ -1,0 +1,45 @@
+---
+description: Next.js App Router 및 React 컴포넌트 패턴
+globs: "**/*.tsx"
+alwaysApply: false
+---
+
+# Next.js & React 규칙
+
+## 컴포넌트
+
+- 함수형 컴포넌트만 사용
+- 정의: `const Component = () => { ... }` 화살표 함수 형태로 통일
+- Props 타입: `interface` 대신 `type` 사용 권장
+- 파일 네이밍: **kebab-case** (예: `matching-card.tsx`)
+- 재사용 로직은 `src/hooks/`에 커스텀 훅으로 분리
+- UI 컴포넌트는 `src/components/ui/` (Shadcn), 도메인별는 `matching/`, `layout/` 등
+- 컴포넌트는 너무 크게 만들지 말고, 인터랙션 단위로 적절히 분리
+
+### Server / Client 컴포넌트
+
+- 데이터 페칭이 필요한 페이지는 **최대한 서버 컴포넌트**로 구성
+- 인터랙션(버튼, 폼 등)이 필요한 부분만 `"use client"`로 **클라이언트 컴포넌트** 분리
+
+## 폼 및 유효성 검사
+
+- **React Hook Form** + **Zod** + `@hookform/resolvers` 사용
+- 날짜/시간: `react-datepicker`
+
+## UI 라이브러리
+
+- **Shadcn UI**: 버튼, 모달, 달력 등 (`npx shadcn@latest add [component]`)
+- 아이콘: `lucide-react` (가벼움), `react-icons` (배드민턴/셔틀콕 등 보조)
+- `class-variance-authority`, `clsx`, `tailwind-merge` 활용
+
+## 라우트 그룹
+
+- `(auth)/` — 로그인, 회원가입
+- `matching/` — 매칭 목록, 상세, 생성
+- `profile/[userId]/` — 프로필
+- `chat/` — 채팅
+
+## 에러 및 로딩 처리 (UX)
+
+- 모든 데이터 페칭 시 **Suspense**와 **error.tsx** 활용
+- 중요한 액션(매칭 신청 등) 후에는 **sonner** 또는 **Toast** 컴포넌트로 사용자 피드백 제공

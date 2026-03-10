@@ -1,0 +1,35 @@
+---
+description: TypeScript 코딩 규칙
+globs: "**/*.ts", "**/*.tsx"
+alwaysApply: false
+---
+
+# TypeScript 규칙
+
+## 타입
+
+- `src/types/`에 공통 타입 정의
+- `any` 지양, `unknown` 또는 구체적 타입 사용
+- API 응답은 `ApiResponse<T>` 활용
+
+## 에러 처리
+
+```typescript
+// ❌ BAD
+try {
+  await fetchData();
+} catch (e) {}
+
+// ✅ GOOD
+try {
+  await fetchData();
+} catch (e) {
+  console.error('Failed to fetch', e);
+  throw e; // 또는 커스텀 에러
+}
+```
+
+## 환경 변수
+
+- `process.env.NEXT_PUBLIC_*`만 클라이언트 노출
+- `typeof window !== 'undefined'`로 SSR/CSR 분기 시 localStorage 등 접근

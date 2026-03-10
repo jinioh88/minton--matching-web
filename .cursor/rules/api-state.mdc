@@ -1,0 +1,43 @@
+---
+description: API 클라이언트, 인증, Zustand 상태 관리 규칙
+globs: "**/lib/**/*.ts", "**/stores/**/*.ts"
+alwaysApply: false
+---
+
+# API & 상태 관리 규칙
+
+## API 클라이언트 (`src/lib/api.ts`)
+
+- **Axios** 인스턴스 사용, `NEXT_PUBLIC_API_BASE_URL` 기반
+- **Request Interceptor**: `localStorage`의 `accessToken`을 `Authorization: Bearer {token}`으로 자동 첨부
+- **Response Interceptor**: 401 시 토큰 갱신 또는 로그인 페이지 리다이렉트
+- `withCredentials: true` (쿠키 기반 인증 시)
+
+## API 응답 타입
+
+```typescript
+export type ApiResponse<T> = {
+  success: boolean;
+  data?: T;
+  message?: string;
+  code?: string;
+};
+```
+
+## Zustand (`src/stores/`)
+
+- 서버 데이터: **TanStack Query** 사용
+- 전역 UI 상태(로그인 유저, 선택 지역 등): **Zustand** 사용
+- JWT는 localStorage 또는 httpOnly Cookie와 함께 사용 (백엔드와 협의)
+
+### Hydration 에러 방지 (Zustand + persist)
+
+Next.js와 Zustand persist 사용 시 서버/클라이언트 렌더링 불일치로 Hydration 에러가 발생할 수 있음.
+
+- persist를 활용한다면, **클라이언트 컴포넌트**에서 `useEffect` 내에서 상태를 읽거나
+- `useHasHydrated` 커스텀 훅을 사용하여 Hydration 완료 후에만 persist 상태를 사용할 것
+
+## 인증
+
+- NextAuth.js 사용 안 함. 백엔드 JWT 직접 연동
+- OAuth(카카오, 네이버 등)는 백엔드 `/api/auth/oauth/login` 연동 후 JWT 저장

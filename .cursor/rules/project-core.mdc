@@ -1,0 +1,44 @@
+---
+description: 배드민턴 매칭 웹 프로젝트 핵심 규칙 및 개발환경
+alwaysApply: true
+---
+
+# monton-match-web 프로젝트 규칙
+
+## 기술 스택
+
+- **프레임워크**: Next.js 15+ (App Router), React 19
+- **언어**: TypeScript
+- **스타일**: Tailwind CSS, Shadcn UI
+- **패키지 매니저**: pnpm 권장
+- **개발 서버**: Turbopack (`pnpm dev`)
+
+## 디렉토리 구조
+
+```
+src/
+├── app/              # App Router 페이지 (auth), matching, profile, chat
+├── components/       # ui/, matching/, layout/
+├── hooks/            # 커스텀 훅
+├── lib/              # api.ts, auth.ts 등 유틸
+├── stores/           # Zustand 전역 상태
+└── types/            # TypeScript 타입
+```
+
+- import alias: `@/*` → `src/*`
+- 새 페이지/컴포넌트 추가 시 위 구조 준수
+
+## 환경 변수
+
+- API Base: `NEXT_PUBLIC_API_BASE_URL` (기본 `http://localhost:8080/api`)
+- `.env.local` 사용, `.env.example`로 팀원용 템플릿 제공
+
+## 상태 관리
+
+- **TanStack Query**: 서버 데이터, 캐싱
+- **Zustand**: 전역 UI 상태 (로그인 유저, 선택 지역 등)
+
+## 참고 문서
+
+- `docs/개발환경설정.md` — 환경 설정 상세
+- `docs/요구사항분석.md`, `docs/제품백로그.md`
