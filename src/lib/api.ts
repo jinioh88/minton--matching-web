@@ -20,14 +20,16 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Response Interceptor: 401 시 authStore 초기화 후 로그인 페이지 이동
+// Response Interceptor: 401/403 시 로그아웃 후 로그인 페이지 이동
 apiClient.interceptors.response.use(
   (res) => res,
   (err: AxiosError) => {
-    if (err.response?.status === 401) {
+    const status = err.response?.status;
+    if (status === 401 || status === 403) {
       if (typeof window !== "undefined") {
         useAuthStore.getState().logout();
-        window.location.href = "/login";
+        const message = encodeURIComponent("세션이 만료되었습니다. 다시 로그인해 주세요.");
+        window.location.href = `/login?error=${message}`;
       }
     }
     return Promise.reject(err);

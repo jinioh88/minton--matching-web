@@ -3,83 +3,54 @@
 import { ActivitySummary } from "@/components/profile/activity-summary";
 import { ProfileDetailSettings } from "@/components/profile/profile-detail-settings";
 import { ProfileHeader } from "@/components/profile/profile-header";
-import { useHasHydrated } from "@/hooks/use-has-hydrated";
+import { ProfileMenu } from "@/components/profile/profile-menu";
+import { useRequireAuth } from "@/hooks/use-require-auth";
 import { apiClient } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 import type { Profile } from "@/types/profile";
 import { useQuery } from "@tanstack/react-query";
-import { AxiosError } from "axios";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
-export default function OtherProfilePage() {
-  const params = useParams();
+export default function MyProfilePage() {
   const router = useRouter();
-  const hasHydrated = useHasHydrated();
-  const { user, isAuthenticated } = useAuthStore();
-  const userId = params?.userId as string | undefined;
+  const { ready, isAuthenticated, shouldRedirect } = useRequireAuth("/login");
+  const { logout, accessToken } = useAuthStore();
+  const [profile, setProfile] = useState<Profile | null>(null);
 
-  const isOwnProfile =
-    hasHydrated &&
-    isAuthenticated &&
-    !!userId &&
-    /^\d+$/.test(userId) &&
-    user?.id === Number(userId);
-
-  useEffect(() => {
-    if (isOwnProfile) {
-      router.replace("/profile/me");
-    }
-  }, [isOwnProfile, router]);
-
-  const { data: profile, isLoading, error } = useQuery({
-    queryKey: ["profile", userId],
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["profile", "me"],
     queryFn: async () => {
-      const res = await apiClient.get(`/users/${userId}`);
+      const res = await apiClient.get("/users/me");
       return res.data.data as Profile;
     },
-    enabled: !!userId && /^\d+$/.test(userId) && !isOwnProfile,
+    enabled: ready && !!accessToken && isAuthenticated,
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 401 || status === 403) return false;
+      return failureCount < 3;
+    },
   });
 
-  const is404 =
-    error instanceof AxiosError && error.response?.status === 404;
-  const invalidUserId = !userId || !/^\d+$/.test(userId);
+  useEffect(() => {
+    if (data) setProfile(data);
+  }, [data]);
 
-  if (isOwnProfile) {
+  const handleLogout = () => {
+    logout();
+    router.replace("/login");
+  };
+
+  const handleProfileUpdate = (updated: Partial<Profile>) => {
+    setProfile((prev) => (prev ? { ...prev, ...updated } : null));
+  };
+
+  if (!ready || shouldRedirect || !isAuthenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (invalidUserId) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-8">
-        <p className="text-destructive">잘못된 프로필 주소입니다.</p>
-        <Link
-          href="/"
-          className="rounded-lg border px-4 py-2 text-sm hover:bg-muted"
-        >
-          홈으로
-        </Link>
-      </div>
-    );
-  }
-
-  if (is404) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-8">
-        <p className="text-destructive">프로필을 찾을 수 없습니다.</p>
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="rounded-lg border px-4 py-2 text-sm hover:bg-muted"
-        >
-          뒤로 가기
-        </button>
       </div>
     );
   }
@@ -99,7 +70,7 @@ export default function OtherProfilePage() {
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-lg border px-4 py-2 text-sm hover:bg-muted"
+          className="rounded-lg border px-4 py-2"
         >
           뒤로 가기
         </button>
@@ -127,7 +98,6 @@ export default function OtherProfilePage() {
           ratingScore={profile.ratingScore}
           joinedAt={profile.joinedAt}
           createdAt={profile.createdAt}
-          readOnly
         />
 
         <div className="space-y-6 border-t pt-6">
@@ -138,7 +108,21 @@ export default function OtherProfilePage() {
           />
 
           <div className="border-t pt-6">
-            <ProfileDetailSettings profile={profile} readOnly />
+            <ProfileDetailSettings profile={profile} onUpdate={handleProfileUpdate} />
+          </div>
+
+          <div className="border-t pt-6">
+            <ProfileMenu />
+          </div>
+
+          <div className="flex justify-center pt-8">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="text-sm text-muted-foreground underline hover:text-foreground"
+            >
+              로그아웃
+            </button>
           </div>
         </div>
       </main>

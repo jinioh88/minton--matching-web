@@ -38,12 +38,12 @@
 
 | # | 작업 | 상세 | API | 백로그 ID | 완료 |
 |---|------|------|-----|-----------|------|
-| 2-0 | **OAuth 콜백 페이지** | `/oauth/callback` 전담 컴포넌트. URL에서 `code` 추출 → `POST /api/auth/oauth/login` 호출 → `data.accessToken`, `data.user` 저장 → `user.profileComplete` 분기 | [Sprint1-API §1](../common-docs/api/Sprint1-API.md#1-oauth2-소셜-로그인) | B2-1 | ☐ |
-| 2-1 | 로그인 페이지 | `/login` 라우트 | - | B2-1 | ☐ |
-| 2-2 | OAuth 버튼 | 카카오, 네이버, 구글, 애플 로그인 버튼 (각 소셜 인증 URL로 리다이렉트) | - | B2-1 | ☐ |
-| 2-3 | 로그인 API 연동 | 콜백에서 `POST /api/auth/oauth/login` 호출 (provider, authorizationCode, redirectUri) | [Sprint1-API §1](../common-docs/api/Sprint1-API.md#1-oauth2-소셜-로그인) | B2-1, B2-2 | ☐ |
-| 2-4 | JWT 저장 | accessToken → localStorage + authStore | - | - | ☐ |
-| 2-5 | profileComplete 분기 | `data.user.profileComplete === false` → 신규 가입 프로필 화면으로 이동 | - | B2-2 | ☐ |
+| 2-0 | **OAuth 콜백 페이지** | `/oauth/callback` 전담 컴포넌트. URL에서 `code` 추출 → `POST /api/auth/oauth/login` 호출 → `data.accessToken`, `data.user` 저장 → `user.profileComplete` 분기 | [Sprint1-API §1](../common-docs/api/Sprint1-API.md#1-oauth2-소셜-로그인) | B2-1 | ☑ |
+| 2-1 | 로그인 페이지 | `/login` 라우트 | - | B2-1 | ☑ |
+| 2-2 | OAuth 버튼 | 카카오, 네이버, 구글, 애플 로그인 버튼 (각 소셜 인증 URL로 리다이렉트) | - | B2-1 | ☑ |
+| 2-3 | 로그인 API 연동 | 콜백에서 `POST /api/auth/oauth/login` 호출 (provider, authorizationCode, redirectUri) | [Sprint1-API §1](../common-docs/api/Sprint1-API.md#1-oauth2-소셜-로그인) | B2-1, B2-2 | ☑ |
+| 2-4 | JWT 저장 | accessToken → localStorage + authStore | - | - | ☑ |
+| 2-5 | profileComplete 분기 | `data.user.profileComplete === false` → 신규 가입 프로필 화면으로 이동 | - | B2-2 | ☑ |
 
 **API 명세 (Sprint1-API §1)**
 
@@ -59,11 +59,11 @@
 
 | # | 작업 | 상세 | API | 백로그 ID | 완료 |
 |---|------|------|-----|-----------|------|
-| 3-1 | 프로필 입력 페이지 | `/signup` 또는 `/profile/complete` | - | B2-2, B2-6 | ☐ |
-| 3-2 | 닉네임 입력 | `GET /api/users/check-nickname?nickname={nickname}` 중복 체크. Response `data.available` (true/false). 최대 30자 | [Sprint1-API §2](../common-docs/api/Sprint1-API.md#2-닉네임-중복-체크) | B2-6 | ☐ |
-| 3-3 | 관심 지역 입력 | **시/군/구 드롭다운 UI** (행정구역 코드 직접 입력 불가). interestLoc1(필수), interestLoc2(선택) → 7~10자리 코드로 변환 | - | B2-6 | ☐ |
-| 3-4 | 프로필 저장 | `PATCH /api/users/me` 호출 | [Sprint1-API §4](../common-docs/api/Sprint1-API.md#4-내-프로필-수정) | B2-2 | ☐ |
-| 3-5 | 완료 후 이동 | 홈 또는 매칭 목록으로 리다이렉트 | - | - | ☐ |
+| 3-1 | 프로필 입력 페이지 | `/signup` 또는 `/profile/complete` | - | B2-2, B2-6 | ☑ |
+| 3-2 | 닉네임 입력 | `GET /api/users/check-nickname?nickname={nickname}` 중복 체크. Response `data.available` (true/false). 최대 30자 | [Sprint1-API §2](../common-docs/api/Sprint1-API.md#2-닉네임-중복-체크) | B2-6 | ☑ |
+| 3-3 | 관심 지역 입력 | **시/군/구 드롭다운 UI** (행정구역 코드 직접 입력 불가). interestLoc1(필수), interestLoc2(선택) → 7~10자리 코드로 변환 | - | B2-6 | ☑ |
+| 3-4 | 프로필 저장 | `PATCH /api/users/me` 호출 | [Sprint1-API §4](../common-docs/api/Sprint1-API.md#4-내-프로필-수정) | B2-2 | ☑ |
+| 3-5 | 완료 후 이동 | 홈 또는 매칭 목록으로 리다이렉트 | - | - | ☑ |
 
 **API 명세 (Sprint1-API §4)**
 
@@ -78,11 +78,11 @@
 
 | # | 작업 | 상세 | API | 백로그 ID | 완료 |
 |---|------|------|-----|-----------|------|
-| 4-1 | 내 프로필 페이지 | `/profile` 또는 `/profile/me` | - | B2-4 | ☐ |
-| 4-2 | 프로필 조회 | `GET /api/users/me` (JWT 필요) | [Sprint1-API §3](../common-docs/api/Sprint1-API.md#3-내-프로필-조회) | B2-4 | ☐ |
-| 4-3 | 프로필 수정 UI | 닉네임, 급수, **관심 지역(시/군/구 드롭다운)**, 라켓, 플레이 스타일 | - | B2-6 | ☐ |
-| 4-4 | 프로필 수정 API | `PATCH /api/users/me` 호출 | [Sprint1-API §4](../common-docs/api/Sprint1-API.md#4-내-프로필-수정) | B2-2, B2-6 | ☐ |
-| 4-5 | 로그아웃 | authStore 초기화, JWT 삭제, 로그인 페이지 이동 | - | - | ☐ |
+| 4-1 | 내 프로필 페이지 | `/profile` 또는 `/profile/me` | - | B2-4 | ☑ |
+| 4-2 | 프로필 조회 | `GET /api/users/me` (JWT 필요) | [Sprint1-API §3](../common-docs/api/Sprint1-API.md#3-내-프로필-조회) | B2-4 | ☑ |
+| 4-3 | 프로필 수정 UI | 닉네임, 급수, **관심 지역(시/군/구 드롭다운)**, 라켓, 플레이 스타일 | - | B2-6 | ☑ |
+| 4-4 | 프로필 수정 API | `PATCH /api/users/me` 호출 | [Sprint1-API §4](../common-docs/api/Sprint1-API.md#4-내-프로필-수정) | B2-2, B2-6 | ☑ |
+| 4-5 | 로그아웃 | authStore 초기화, JWT 삭제, 로그인 페이지 이동 | - | - | ☑ |
 
 **API 응답 필드 (Sprint1-API §3)**
 
@@ -94,9 +94,9 @@
 
 | # | 작업 | 상세 | API | 백로그 ID | 완료 |
 |---|------|------|-----|-----------|------|
-| 5-1 | 타인 프로필 페이지 | `/profile/[userId]` | - | B2-5 | ☐ |
-| 5-2 | 프로필 조회 | `GET /api/users/{userId}` (인증 불필요) | [Sprint1-API §5](../common-docs/api/Sprint1-API.md#5-타인-프로필-조회) | B2-5 | ☐ |
-| 5-3 | 읽기 전용 표시 | 수정 버튼 없음, 조회만 가능 | - | B2-5 | ☐ |
+| 5-1 | 타인 프로필 페이지 | `/profile/[userId]` | - | B2-5 | ☑ |
+| 5-2 | 프로필 조회 | `GET /api/users/{userId}` (인증 불필요) | [Sprint1-API §5](../common-docs/api/Sprint1-API.md#5-타인-프로필-조회) | B2-5 | ☑ |
+| 5-3 | 읽기 전용 표시 | 수정 버튼 없음, 조회만 가능 | - | B2-5 | ☑ |
 
 ---
 
@@ -104,9 +104,9 @@
 
 | # | 작업 | 상세 | 완료 |
 |---|------|------|------|
-| 6-1 | 비로그인 시 접근 제한 | `/profile`, `/profile/me` 등 → 로그인 페이지로 리다이렉트 | ☐ |
-| 6-2 | 로그인 시 로그인 페이지 접근 | `/login` 접근 시 이미 로그인되어 있으면 홈으로 | ☐ |
-| 6-3 | 에러 처리 | 401(UNAUTHORIZED) 시 로그아웃 후 로그인 페이지. 400(OAUTH_INVALID) 등 에러 메시지 표시 (apiClient Interceptor) | ☐ |
+| 6-1 | 비로그인 시 접근 제한 | `/profile`, `/profile/me`, `/signup` 등 → 로그인 페이지로 리다이렉트 | ☑ |
+| 6-2 | 로그인 시 로그인 페이지 접근 | `/login` 접근 시 이미 로그인되어 있으면 홈으로 | ☑ |
+| 6-3 | 에러 처리 | 401(UNAUTHORIZED) 시 로그아웃 후 로그인 페이지. 400(OAUTH_INVALID) 등 에러 메시지 표시 (apiClient Interceptor) | ☑ |
 
 ---
 

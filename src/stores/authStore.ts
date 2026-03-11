@@ -1,8 +1,36 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type { User } from "@/types/user";
 
 export type { User };
+
+/** SSR 시 localStorage 미존재로 인한 에러 방지 */
+const safeStorage = {
+  getItem: (name: string): string | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      return localStorage.getItem(name);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (name: string, value: string): void => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(name, value);
+    } catch {
+      // ignore
+    }
+  },
+  removeItem: (name: string): void => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.removeItem(name);
+    } catch {
+      // ignore
+    }
+  },
+};
 
 interface AuthState {
   user: User | null;
@@ -35,6 +63,6 @@ export const useAuthStore = create<AuthState>()(
         set({ user: null, accessToken: null, isAuthenticated: false });
       },
     }),
-    { name: "auth-storage" }
+    { name: "auth-storage", storage: createJSONStorage(() => safeStorage) }
   )
 );
