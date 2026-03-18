@@ -8,7 +8,7 @@ import { useRequireAuth } from "@/hooks/use-require-auth";
 import { apiClient } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 import type { Profile } from "@/types/profile";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 
 export default function MyProfilePage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { ready, isAuthenticated, shouldRedirect } = useRequireAuth("/login");
   const { logout, accessToken } = useAuthStore();
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -29,7 +30,7 @@ export default function MyProfilePage() {
     enabled: ready && !!accessToken && isAuthenticated,
     retry: (failureCount, error) => {
       const status = (error as { response?: { status?: number } })?.response?.status;
-      if (status === 401 || status === 403) return false;
+      if (status === 401 || status === 403 || status === 404) return false;
       return failureCount < 3;
     },
   });
@@ -45,6 +46,11 @@ export default function MyProfilePage() {
 
   const handleProfileUpdate = (updated: Partial<Profile>) => {
     setProfile((prev) => (prev ? { ...prev, ...updated } : null));
+  };
+
+  const handleProfileImageUpdate = (profileImg: string) => {
+    handleProfileUpdate({ profileImg });
+    queryClient.invalidateQueries({ queryKey: ["profile", "me"] });
   };
 
   if (!ready || shouldRedirect || !isAuthenticated) {
@@ -98,6 +104,7 @@ export default function MyProfilePage() {
           ratingScore={profile.ratingScore}
           joinedAt={profile.joinedAt}
           createdAt={profile.createdAt}
+          onProfileImageUpdate={handleProfileImageUpdate}
         />
 
         <div className="space-y-6 border-t pt-6">

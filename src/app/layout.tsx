@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
+import { Roboto } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { BottomNav } from "@/components/layout/bottom-nav";
+
+const roboto = Roboto({ weight: "500", subsets: ["latin"], variable: "--font-roboto" });
 
 export const metadata: Metadata = {
   title: "배드민턴 매칭",
@@ -13,9 +17,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko">
+    <html lang="ko" className={roboto.variable}>
       <body className="antialiased font-sans">
-        <Providers>{children}</Providers>
+        <Providers>
+          <div className="min-h-screen pb-16">
+            {children}
+          </div>
+          <BottomNav />
+        </Providers>
       </body>
     </html>
   );

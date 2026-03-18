@@ -41,6 +41,11 @@ export default function OtherProfilePage() {
       return res.data.data as Profile;
     },
     enabled: !!userId && /^\d+$/.test(userId) && !isOwnProfile,
+    retry: (failureCount, err) => {
+      const status = (err as AxiosError)?.response?.status;
+      if (status === 404) return false;
+      return failureCount < 3;
+    },
   });
 
   const is404 =
@@ -71,15 +76,25 @@ export default function OtherProfilePage() {
 
   if (is404) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-8">
-        <p className="text-destructive">프로필을 찾을 수 없습니다.</p>
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="rounded-lg border px-4 py-2 text-sm hover:bg-muted"
-        >
-          뒤로 가기
-        </button>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 p-8">
+        <p className="text-center text-muted-foreground">
+          조회할 수 없는 프로필입니다.
+        </p>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link
+            href="/"
+            className="rounded-lg border border-primary bg-primary px-4 py-2 text-center text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            홈으로
+          </Link>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="rounded-lg border px-4 py-2 text-sm hover:bg-muted"
+          >
+            뒤로 가기
+          </button>
+        </div>
       </div>
     );
   }
