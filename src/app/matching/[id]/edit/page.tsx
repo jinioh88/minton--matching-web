@@ -3,12 +3,8 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRequireAuth } from "@/hooks/use-require-auth";
-import {
-  getMatchDetail,
-  getParticipationErrorMessage,
-  updateMatch,
-  uploadFile,
-} from "@/lib/api";
+import { getMatchDetail, updateMatch, uploadFile } from "@/lib/api";
+import { showApiErrorToast } from "@/lib/show-api-error-toast";
 import { REGIONS } from "@/lib/regions";
 import type { CostPolicy, CreateMatchRequest, MatchDetail } from "@/types/match";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -193,7 +189,7 @@ function EditMatchFormInner({
       await updateMatch(Number(matchId), body);
       router.push(`/matching/${matchId}`);
     } catch (err) {
-      window.alert(getParticipationErrorMessage(err));
+      showApiErrorToast(err);
     }
   };
 

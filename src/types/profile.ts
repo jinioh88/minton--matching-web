@@ -1,6 +1,9 @@
 /**
- * GET /api/users/me 응답 타입
+ * GET /api/users/me , GET /api/users/{userId} 응답 타입
+ * Sprint 4: participationBannedUntil·suspendedUntil·accountStatus 는 `/me` 에만 포함 (타인 프로필 미포함)
  */
+export type AccountStatus = "ACTIVE" | "SUSPENDED" | "BANNED";
+
 export type Profile = {
   id: number;
   nickname: string;
@@ -16,4 +19,11 @@ export type Profile = {
   joinedAt?: string;
   /** createdAt - joinedAt 대체 (백엔드 DTO에 따라 사용) */
   createdAt?: string;
+  /** Sprint 4 — 본인(`/me`)만 */
+  participationBannedUntil?: string | null;
+  suspendedUntil?: string | null;
+  accountStatus?: AccountStatus;
+  /** Sprint 4 — 본인·타인 */
+  showCautionBadge?: boolean;
+  receivedReviewCount?: number;
 };

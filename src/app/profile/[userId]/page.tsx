@@ -3,6 +3,8 @@
 import { ActivitySummary } from "@/components/profile/activity-summary";
 import { ProfileDetailSettings } from "@/components/profile/profile-detail-settings";
 import { ProfileHeader } from "@/components/profile/profile-header";
+import { ReceivedPenaltiesSummary } from "@/components/profile/received-penalties-summary";
+import { ReceivedReviewsSummary } from "@/components/profile/received-reviews-summary";
 import { useHasHydrated } from "@/hooks/use-has-hydrated";
 import { apiClient } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
@@ -143,6 +145,7 @@ export default function OtherProfilePage() {
           joinedAt={profile.joinedAt}
           createdAt={profile.createdAt}
           readOnly
+          showCautionBadge={profile.showCautionBadge === true}
         />
 
         <div className="space-y-6 border-t pt-6">
@@ -151,6 +154,24 @@ export default function OtherProfilePage() {
             joinedCount={0}
             penaltyCount={profile.penaltyCount ?? 0}
           />
+
+          <div className="border-t pt-6">
+            <ReceivedReviewsSummary
+              userId={Number(userId)}
+              receivedReviewCount={profile.receivedReviewCount}
+              listHref={`/profile/${userId}/reviews`}
+              rowLabel="받은 후기"
+            />
+          </div>
+
+          <div className="border-t pt-6">
+            <ReceivedPenaltiesSummary
+              userId={Number(userId)}
+              penaltyCount={profile.penaltyCount}
+              listHref={`/profile/${userId}/penalties`}
+              rowLabel="패널티 이력"
+            />
+          </div>
 
           <div className="border-t pt-6">
             <ProfileDetailSettings profile={profile} readOnly />

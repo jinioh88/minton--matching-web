@@ -1,32 +1,10 @@
 "use client";
 
+import { getMatchDisplayStatus } from "@/lib/match-display-status";
 import { PARTICIPATION_STATUS_SHORT_LABELS } from "@/lib/participation";
 import type { MatchListItem } from "@/types/match";
 import { Clock, MapPin, Users } from "lucide-react";
 import Link from "next/link";
-
-/** 표시용 상태: 모집중, 마감임박, 대기신청 */
-function getDisplayStatus(match: MatchListItem): {
-  label: string;
-  style: string;
-} {
-  const isFull = match.currentPeople >= match.maxPeople;
-  const isNearlyFull = match.currentPeople >= match.maxPeople - 1 && !isFull;
-
-  if (match.status === "CLOSED" || isFull) {
-    return { label: "대기신청", style: "bg-gray-700 text-white" };
-  }
-  if (match.status === "RECRUITING" && isNearlyFull) {
-    return { label: "마감임박", style: "bg-orange-500 text-white" };
-  }
-  if (match.status === "RECRUITING") {
-    return { label: "모집중", style: "bg-green-500 text-white" };
-  }
-  if (match.status === "FINISHED") {
-    return { label: "종료", style: "bg-muted text-muted-foreground" };
-  }
-  return { label: "모집중", style: "bg-green-500 text-white" };
-}
 
 /** durationMin → "2h" 형식 */
 function formatDuration(min?: number): string {
@@ -72,7 +50,8 @@ type MatchCardProps = {
 
 export function MatchCard({ match }: MatchCardProps) {
   const locationDisplay = match.locationName || "-";
-  const { label: statusLabel, style: statusStyle } = getDisplayStatus(match);
+  const { label: statusLabel, className: statusClassName } =
+    getMatchDisplayStatus(match);
   const endTime = getEndTime(match.startTime, match.durationMin);
   const durationStr = formatDuration(match.durationMin);
   const timeDisplay = match.durationMin
@@ -90,7 +69,7 @@ export function MatchCard({ match }: MatchCardProps) {
           {/* 상태 + 급수 배지 */}
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span
-              className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ${statusStyle}`}
+              className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ${statusClassName}`}
             >
               {statusLabel}
             </span>

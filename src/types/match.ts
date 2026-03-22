@@ -181,4 +181,7 @@ export type MatchDetail = {
   canApply?: boolean;
   canCancel?: boolean;
   hasWaitingOffer?: boolean;
+  // Sprint 4: 매칭 상세 확장 (백엔드 미배포 시 생략 가능 → UI는 기본값 처리)
+  canFinishMatch?: boolean;
+  reviewPendingUserIds?: number[];
 };

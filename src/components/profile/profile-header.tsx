@@ -1,7 +1,7 @@
 "use client";
 
 import { uploadProfileImage } from "@/lib/api";
-import { Camera, Loader2 } from "lucide-react";
+import { AlertTriangle, Camera, Loader2 } from "lucide-react";
 import { useRef, useState } from "react";
 
 const ACCEPTED_TYPES = "image/jpeg,image/png,image/gif,image/webp";
@@ -18,6 +18,8 @@ type ProfileHeaderProps = {
   createdAt?: string;
   /** true: 타인 프로필 등 수정 불가 (카메라 버튼 숨김) */
   readOnly?: boolean;
+  /** Sprint 4 — 서버 `showCautionBadge` (패널티 누적 구간 등) */
+  showCautionBadge?: boolean;
   /** 프로필 이미지 업로드 완료 시 콜백 (내 프로필에서만 사용) */
   onProfileImageUpdate?: (profileImg: string) => void;
 };
@@ -62,6 +64,7 @@ export const ProfileHeader = ({
   joinedAt,
   createdAt,
   readOnly = false,
+  showCautionBadge = false,
   onProfileImageUpdate,
 }: ProfileHeaderProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -151,11 +154,20 @@ export const ProfileHeader = ({
       )}
 
       <div className="flex flex-col items-center gap-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2">
           <span className="text-xl font-bold">{nickname}</span>
           <span className="rounded-md bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
             {levelLabel}
           </span>
+          {showCautionBadge && (
+            <span
+              className="inline-flex items-center gap-0.5 rounded-md border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-100"
+              title="최근 활동 이력에 따라 표시될 수 있습니다"
+            >
+              <AlertTriangle className="h-3 w-3" aria-hidden />
+              주의
+            </span>
+          )}
         </div>
         <p className="text-sm text-muted-foreground">
           가입일: {formatJoinedAt(joinedAtValue)}

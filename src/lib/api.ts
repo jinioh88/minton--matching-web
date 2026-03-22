@@ -1,6 +1,12 @@
 import axios, { AxiosError } from "axios";
 import { useAuthStore } from "@/stores/authStore";
+import type { CreatePenaltyRequest, PenaltyHistoryItem } from "@/types/penalty";
 import type { Profile } from "@/types/profile";
+import type {
+  CreateReviewRequest,
+  CreateReviewResponse,
+  ReceivedReviewItem,
+} from "@/types/review";
 import type {
   ApplicationItem,
   ApplyParticipationResponse,
@@ -10,6 +16,7 @@ import type {
   MatchListResponse,
   UpdateMatchRequest,
 } from "@/types/match";
+import type { PageResponse } from "@/types/page";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api";
@@ -83,15 +90,66 @@ const PARTICIPATION_ERROR_MESSAGES: Record<string, string> = {
   OFFER_EXPIRED: "참여 기회가 만료되었습니다",
   FORBIDDEN: "권한이 없습니다",
   BAD_REQUEST: "입력값을 확인해 주세요",
+  INVALID_MATCH_STATUS: "현재 상태에서는 진행할 수 없습니다",
 };
 
-/** API 에러에서 사용자 메시지 추출 (Sprint 3 참여 관련) */
-export function getParticipationErrorMessage(err: unknown): string {
+/** Sprint 4 후기·패널티·제재 관련 에러 코드 */
+const SPRINT4_API_ERROR_MESSAGES: Record<string, string> = {
+  REVIEW_NOT_ALLOWED: "이 모임에서는 후기를 작성할 수 없습니다.",
+  SELF_REVIEW_NOT_ALLOWED: "본인에게는 후기를 남길 수 없습니다.",
+  DUPLICATE_REVIEW: "이미 후기를 작성했습니다.",
+  USER_NOT_FOUND: "사용자를 찾을 수 없습니다.",
+  INVALID_PENALTY_TARGET: "패널티를 줄 수 없는 대상입니다.",
+  DUPLICATE_PENALTY: "이미 같은 유형의 패널티가 부여되었습니다.",
+  USER_PARTICIPATION_BANNED: "현재 참여 제한 중인 계정입니다.",
+  USER_SUSPENDED: "정지된 계정입니다. 이 작업을 할 수 없습니다.",
+  USER_BANNED: "이용이 제한된 계정입니다.",
+  NOT_FOUND: "요청한 정보를 찾을 수 없습니다.",
+};
+
+const API_ERROR_MESSAGES: Record<string, string> = {
+  ...PARTICIPATION_ERROR_MESSAGES,
+  ...SPRINT4_API_ERROR_MESSAGES,
+};
+
+/** Phase 7: 참여 신청 — 제재 코드는 재시도 불가 안내 */
+const APPLY_PARTICIPATION_ERROR_OVERRIDES: Record<string, string> = {
+  USER_PARTICIPATION_BANNED:
+    "참여 제한 기간 중입니다. 기간이 끝나기 전에는 신청할 수 없으며, 같은 조건으로 다시 시도해도 신청되지 않습니다.",
+  USER_SUSPENDED:
+    "계정이 정지된 상태입니다. 정지가 해제되기 전에는 참여 신청을 할 수 없으며, 다시 시도해도 같습니다.",
+  USER_BANNED:
+    "이용이 제한된 계정입니다. 참여 신청이 불가하며, 재시도로 바뀌지 않습니다. 고객 지원을 이용해 주세요.",
+};
+
+/** Phase 7: 후기 작성 — 정지·밴 구분 */
+const REVIEW_ERROR_OVERRIDES: Record<string, string> = {
+  USER_SUSPENDED:
+    "정지된 계정입니다. 정지 기간이 끝나기 전에는 후기를 작성할 수 없습니다.",
+  USER_BANNED:
+    "이용이 제한된 계정입니다. 후기를 작성할 수 없습니다. 고객 지원을 이용해 주세요.",
+};
+
+export type ApiErrorMessageContext = "apply" | "review" | "general";
+
+/** API 에러에서 사용자 메시지 추출 (참여·후기·패널티 공통) */
+export function getParticipationErrorMessage(
+  err: unknown,
+  context: ApiErrorMessageContext = "general"
+): string {
   if (err instanceof AxiosError) {
     const code = (err.response?.data as { code?: string })?.code;
     const message = (err.response?.data as { message?: string })?.message;
-    if (code && PARTICIPATION_ERROR_MESSAGES[code]) {
-      return PARTICIPATION_ERROR_MESSAGES[code];
+    if (code) {
+      if (context === "apply" && APPLY_PARTICIPATION_ERROR_OVERRIDES[code]) {
+        return APPLY_PARTICIPATION_ERROR_OVERRIDES[code];
+      }
+      if (context === "review" && REVIEW_ERROR_OVERRIDES[code]) {
+        return REVIEW_ERROR_OVERRIDES[code];
+      }
+      if (API_ERROR_MESSAGES[code]) {
+        return API_ERROR_MESSAGES[code];
+      }
     }
     if (message) return message;
   }
@@ -168,17 +226,27 @@ export async function getMatchDetail(matchId: number): Promise<MatchDetail> {
   return data;
 }
 
-/** 매칭 상태 변경 (방장 전용). status: CLOSED(모집 마감) | CANCELLED(취소) */
-export async function updateMatchStatus(
-  matchId: number,
-  status: "CLOSED" | "CANCELLED"
-): Promise<MatchDetail> {
+/** 모집 마감 (방장 전용). PATCH 본문 `{ status: CLOSED }` */
+export async function closeMatch(matchId: number): Promise<MatchDetail> {
   const res = await apiClient.patch<ApiResponse<MatchDetail>>(
     `/matches/${matchId}`,
-    { status }
+    { status: "CLOSED" }
   );
   const data = res.data?.data;
-  if (!data) throw new Error("매칭 상태 변경에 실패했습니다.");
+  if (!data) throw new Error("모집 마감 처리에 실패했습니다.");
+  return data;
+}
+
+/**
+ * 모임 전체 취소 (방장 전용).
+ * `PATCH /matches/{id}` 본문으로 CANCELLED 보내지 않고 전용 엔드포인트만 사용 (Sprint3-API §7-1).
+ */
+export async function cancelMatch(matchId: number): Promise<MatchDetail> {
+  const res = await apiClient.patch<ApiResponse<MatchDetail>>(
+    `/matches/${matchId}/cancel`
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("매칭 취소에 실패했습니다.");
   return data;
 }
 
@@ -193,6 +261,91 @@ export async function updateMatch(
   );
   const data = res.data?.data;
   if (!data) throw new Error("매칭 수정에 실패했습니다.");
+  return data;
+}
+
+// --- Sprint 4: 종료·후기·패널티·프로필 ---
+
+/** 매칭 수동 종료 (방장, CLOSED → FINISHED) */
+export async function finishMatch(matchId: number): Promise<MatchDetail> {
+  const res = await apiClient.patch<ApiResponse<MatchDetail>>(
+    `/matches/${matchId}/finish`
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("모임 종료 처리에 실패했습니다.");
+  return data;
+}
+
+/** 후기 작성 */
+export async function createReview(
+  matchId: number,
+  body: CreateReviewRequest
+): Promise<CreateReviewResponse> {
+  const res = await apiClient.post<ApiResponse<CreateReviewResponse>>(
+    `/matches/${matchId}/reviews`,
+    body
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("후기 작성에 실패했습니다.");
+  return data;
+}
+
+/** 받은 후기 목록 (비로그인 가능 — 마스킹은 서버 규칙) */
+export async function getUserReviews(
+  userId: number,
+  params?: { page?: number; size?: number }
+): Promise<PageResponse<ReceivedReviewItem>> {
+  const res = await apiClient.get<ApiResponse<PageResponse<ReceivedReviewItem>>>(
+    `/users/${userId}/reviews`,
+    { params: { page: params?.page ?? 0, size: params?.size ?? 20 } }
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("후기 목록을 불러오는데 실패했습니다.");
+  return data;
+}
+
+/** 패널티 부여 (방장, FINISHED) */
+export async function createPenalty(
+  matchId: number,
+  body: CreatePenaltyRequest
+): Promise<void> {
+  const res = await apiClient.post<ApiResponse<unknown>>(
+    `/matches/${matchId}/penalties`,
+    body
+  );
+  if (!res.data?.success) {
+    throw new Error("패널티 부여에 실패했습니다.");
+  }
+}
+
+/** 받은 패널티 이력 */
+export async function getUserPenalties(
+  userId: number,
+  params?: { page?: number; size?: number }
+): Promise<PageResponse<PenaltyHistoryItem>> {
+  const res = await apiClient.get<
+    ApiResponse<PageResponse<PenaltyHistoryItem>>
+  >(`/users/${userId}/penalties`, {
+    params: { page: params?.page ?? 0, size: params?.size ?? 20 },
+  });
+  const data = res.data?.data;
+  if (!data) throw new Error("패널티 이력을 불러오는데 실패했습니다.");
+  return data;
+}
+
+/** 내 프로필 (Sprint 4 제재·후기 필드 포함 가능) */
+export async function getMyProfile(): Promise<Profile> {
+  const res = await apiClient.get<ApiResponse<Profile>>("/users/me");
+  const data = res.data?.data;
+  if (!data) throw new Error("프로필을 불러오는데 실패했습니다.");
+  return data;
+}
+
+/** 타인 프로필 */
+export async function getUserProfile(userId: number): Promise<Profile> {
+  const res = await apiClient.get<ApiResponse<Profile>>(`/users/${userId}`);
+  const data = res.data?.data;
+  if (!data) throw new Error("프로필을 불러오는데 실패했습니다.");
   return data;
 }
 

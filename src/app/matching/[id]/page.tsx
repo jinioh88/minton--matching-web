@@ -2,6 +2,7 @@
 
 import { ApplicationCard } from "@/components/matching/application-card";
 import { ApplyParticipationModal } from "@/components/matching/apply-participation-modal";
+import { HostPenaltyButton } from "@/components/matching/host-penalty-button";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   applyParticipation,
@@ -10,16 +11,19 @@ import {
   rejectOffer,
   getMatchDetail,
   getApplications,
-  getParticipationErrorMessage,
-  updateMatchStatus,
+  cancelMatch,
+  closeMatch,
+  finishMatch,
   updateParticipation,
 } from "@/lib/api";
+import { showApiErrorToast } from "@/lib/show-api-error-toast";
 import { PARTICIPATION_STATUS_LABELS } from "@/lib/participation";
+import { getMatchDisplayStatus } from "@/lib/match-display-status";
 import { getRegionName } from "@/lib/regions";
 import { cn } from "@/lib/utils";
 import { useOfferRemainingMs, formatRemaining } from "@/hooks/use-offer-remaining-ms";
 import { useAuthStore } from "@/stores/authStore";
-import type { MatchDetail } from "@/types/match";
+import type { MatchDetail, MatchParticipant } from "@/types/match";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
@@ -70,6 +74,26 @@ function formatDate(dateStr: string) {
   }
 }
 
+/**
+ * 백엔드가 방장을 confirmedParticipants에 넣지 않는 경우에도
+ * 화면에는 방장을 확정 참여자 맨 앞에 표시한다.
+ */
+function withHostInConfirmedParticipants(match: MatchDetail): MatchParticipant[] {
+  const { confirmedParticipants, hostId, host } = match;
+  if (confirmedParticipants.some((p) => p.userId === hostId)) {
+    return confirmedParticipants;
+  }
+  const hostRow: MatchParticipant = {
+    participationId: -hostId,
+    userId: hostId,
+    nickname: host.nickname,
+    profileImg: host.profileImg,
+    ratingScore: host.ratingScore,
+    queueOrder: 0,
+  };
+  return [hostRow, ...confirmedParticipants];
+}
+
 export default function MatchingDetailPage() {
   const params = useParams();
   const matchId = params?.id as string | undefined;
@@ -104,15 +128,29 @@ export default function MatchingDetailPage() {
   }, [match?.serverTime]);
 
   const statusMutation = useMutation({
-    mutationFn: (status: "CLOSED" | "CANCELLED") =>
-      updateMatchStatus(Number(matchId), status),
+    mutationFn: (action: "CLOSED" | "CANCELLED") =>
+      action === "CLOSED"
+        ? closeMatch(Number(matchId))
+        : cancelMatch(Number(matchId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["match", matchId] });
       queryClient.invalidateQueries({ queryKey: ["matches"] });
+      queryClient.invalidateQueries({ queryKey: ["applications", matchId] });
     },
     onError: (err) => {
-      const msg = err instanceof Error ? err.message : "상태 변경에 실패했습니다.";
-      window.alert(msg);
+      showApiErrorToast(err);
+    },
+  });
+
+  const finishMutation = useMutation({
+    mutationFn: () => finishMatch(Number(matchId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["match", matchId] });
+      queryClient.invalidateQueries({ queryKey: ["matches"] });
+      queryClient.invalidateQueries({ queryKey: ["applications", matchId] });
+    },
+    onError: (err) => {
+      showApiErrorToast(err);
     },
   });
 
@@ -125,7 +163,7 @@ export default function MatchingDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["matches"] });
     },
     onError: (err) => {
-      window.alert(getParticipationErrorMessage(err));
+      showApiErrorToast(err, "apply");
     },
   });
 
@@ -136,7 +174,7 @@ export default function MatchingDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["matches"] });
     },
     onError: (err) => {
-      window.alert(getParticipationErrorMessage(err));
+      showApiErrorToast(err);
     },
   });
 
@@ -147,8 +185,7 @@ export default function MatchingDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["matches"] });
     },
     onError: (err) => {
-      const msg = getParticipationErrorMessage(err);
-      window.alert(msg);
+      showApiErrorToast(err, "apply");
       // OFFER_EXPIRED 시 자동 새로고침
       if ((err as { response?: { data?: { code?: string } } })?.response?.data?.code === "OFFER_EXPIRED") {
         queryClient.invalidateQueries({ queryKey: ["match", matchId] });
@@ -163,7 +200,7 @@ export default function MatchingDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["matches"] });
     },
     onError: (err) => {
-      window.alert(getParticipationErrorMessage(err));
+      showApiErrorToast(err, "apply");
     },
   });
 
@@ -183,7 +220,7 @@ export default function MatchingDetailPage() {
       });
     },
     onError: (err) => {
-      window.alert(getParticipationErrorMessage(err));
+      showApiErrorToast(err);
     },
   });
 
@@ -230,6 +267,8 @@ export default function MatchingDetailPage() {
 
   const costLabel = COST_LABELS[match.costPolicy] ?? match.costPolicy;
   const locationDisplay = match.locationName || getRegionName(match.regionCode) || "-";
+  const matchStatusBadge = getMatchDisplayStatus(match);
+  const displayConfirmed = withHostInConfirmedParticipants(match);
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -308,9 +347,17 @@ export default function MatchingDetailPage() {
               </p>
             </div>
           </Link>
-          <h1 className="mt-4 text-xl font-bold leading-tight">
-            {match.title}
-          </h1>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-bold leading-tight">{match.title}</h1>
+            <span
+              className={cn(
+                "shrink-0 rounded-md px-2 py-0.5 text-xs font-medium",
+                matchStatusBadge.className
+              )}
+            >
+              {matchStatusBadge.label}
+            </span>
+          </div>
         </section>
 
         {/* 핵심 매칭 카드 */}
@@ -380,6 +427,30 @@ export default function MatchingDetailPage() {
           </div>
         </section>
 
+        {/* Sprint 4: 종료 모임 후기 안내 */}
+        {match.status === "FINISHED" &&
+          user &&
+          (match.reviewPendingUserIds?.length ?? 0) > 0 && (
+            <section className="mb-6 rounded-xl border border-primary/25 bg-primary/5 p-4">
+              <p className="text-sm font-medium">
+                아직 남기지 않은 후기가{" "}
+                {match.reviewPendingUserIds!.length}건 있습니다.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                상대방에 대한 후기를 작성해 주세요.
+              </p>
+              <Link
+                href={`/matching/${matchId}/review`}
+                className={cn(
+                  buttonVariants({ size: "sm" }),
+                  "mt-3 inline-flex no-underline"
+                )}
+              >
+                후기 작성하기
+              </Link>
+            </section>
+          )}
+
         {/* 방장 신청 목록 */}
         {isHost && match.status === "RECRUITING" && (
           <section className="mb-6">
@@ -448,17 +519,29 @@ export default function MatchingDetailPage() {
           </section>
         )}
 
-        {/* 확정된 참여자 */}
-        {match.confirmedParticipants.length > 0 && (
+        {/* 확정된 참여자 (API에 방장이 없으면 host 정보로 맨 앞에 표시) */}
+        {displayConfirmed.length > 0 && (
           <section className="mb-24">
             <p className="mb-3 text-sm font-medium text-muted-foreground">
-              확정된 참여자 ({match.confirmedParticipants.length}명)
+              확정된 참여자 ({displayConfirmed.length}명)
             </p>
-            <div className="flex flex-col gap-2">
-              {match.confirmedParticipants.map((p) => {
+            {isHost &&
+              match.status === "FINISHED" &&
+              match.confirmedParticipants.some((x) => x.userId !== match.hostId) && (
+                <p className="mb-3 text-xs text-muted-foreground">
+                  종료된 모임입니다. 참가자(방장 제외)에게 노쇼·지각 패널티를 부여할
+                  수 있습니다. 동일 유형은 한 번만 부여됩니다.
+                </p>
+              )}
+            <div className="grid grid-cols-3 gap-2">
+              {displayConfirmed.map((p) => {
                 const showKick =
                   isHost &&
                   (match.status === "RECRUITING" || match.status === "CLOSED") &&
+                  p.userId !== match.hostId;
+                const showPenalty =
+                  isHost &&
+                  match.status === "FINISHED" &&
                   p.userId !== match.hostId;
                 const isKicking =
                   updateParticipationMutation.isPending &&
@@ -469,13 +552,13 @@ export default function MatchingDetailPage() {
                 return (
                   <div
                     key={p.participationId}
-                    className="flex items-center justify-between gap-2 rounded-xl border bg-muted/30 px-3 py-2"
+                    className="flex min-w-0 flex-col gap-2 rounded-xl border bg-muted/30 p-2"
                   >
                     <Link
                       href={`/profile/${p.userId}`}
-                      className="flex min-w-0 flex-1 items-center gap-2 transition-opacity hover:opacity-80"
+                      className="flex min-w-0 flex-col items-center gap-1.5 text-center transition-opacity hover:opacity-80"
                     >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
                         {p.profileImg ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
@@ -484,40 +567,58 @@ export default function MatchingDetailPage() {
                             className="h-full w-full object-cover"
                           />
                         ) : (
-                          <span className="text-xs font-medium">
+                          <span className="text-sm font-medium">
                             {p.nickname.charAt(0)}
                           </span>
                         )}
                       </div>
-                      <span className="truncate text-sm font-medium">
+                      <span className="w-full truncate text-xs font-medium leading-tight sm:text-sm">
                         {p.nickname}
                       </span>
                     </Link>
-                    {showKick && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="shrink-0 border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        disabled={isKicking}
-                        onClick={() => {
-                          if (
-                            !window.confirm(
-                              `${p.nickname}님을 매칭에서 추방하시겠습니까?`
-                            )
-                          )
-                            return;
-                          updateParticipationMutation.mutate({
-                            participationId: p.participationId,
-                            action: "KICK",
-                          });
-                        }}
-                      >
-                        {isKicking ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          "추방"
+                    {(showKick || showPenalty) && (
+                      <div className="flex flex-wrap justify-center gap-1">
+                        {showKick && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 border-destructive px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            disabled={isKicking}
+                            onClick={() => {
+                              if (
+                                !window.confirm(
+                                  `${p.nickname}님을 매칭에서 추방하시겠습니까?`
+                                )
+                              )
+                                return;
+                              updateParticipationMutation.mutate({
+                                participationId: p.participationId,
+                                action: "KICK",
+                              });
+                            }}
+                          >
+                            {isKicking ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              "추방"
+                            )}
+                          </Button>
                         )}
-                      </Button>
+                        {showPenalty && (
+                          <HostPenaltyButton
+                            matchId={Number(matchId)}
+                            participant={p}
+                            onSuccess={() => {
+                              queryClient.invalidateQueries({
+                                queryKey: ["match", matchId],
+                              });
+                              queryClient.invalidateQueries({
+                                queryKey: ["matches"],
+                              });
+                            }}
+                          />
+                        )}
+                      </div>
                     )}
                   </div>
                 );
@@ -529,8 +630,10 @@ export default function MatchingDetailPage() {
         {/* 하단 고정 버튼 */}
         <MatchDetailBottomBar
           match={match}
+          matchId={matchId}
           user={user}
           statusMutation={statusMutation}
+          finishMutation={finishMutation}
           applyMutation={applyMutation}
           cancelMutation={cancelMutation}
           acceptOfferMutation={acceptOfferMutation}
@@ -554,8 +657,10 @@ export default function MatchingDetailPage() {
 
 type BottomBarProps = {
   match: MatchDetail;
+  matchId: string;
   user: { id: number } | null;
   statusMutation: { isPending: boolean; mutate: (s: "CLOSED" | "CANCELLED") => void };
+  finishMutation: { isPending: boolean; mutate: () => void };
   applyMutation: { isPending: boolean };
   cancelMutation: { isPending: boolean; mutate: () => void };
   acceptOfferMutation: { isPending: boolean; mutate: () => void };
@@ -568,8 +673,10 @@ type BottomBarProps = {
 /** 하단 버튼 영역 (참여/취소/수락·거절) */
 function MatchDetailBottomBar({
   match,
+  matchId,
   user,
   statusMutation,
+  finishMutation,
   applyMutation,
   cancelMutation,
   acceptOfferMutation,
@@ -586,34 +693,107 @@ function MatchDetailBottomBar({
   const remainingLabel = formatRemaining(remainingMs);
   const isUrgent = remainingMs != null && remainingMs > 0 && remainingMs < 60_000;
 
-  // 방장: 모집 마감/취소
-  if (user?.id === match.hostId && match.status === "RECRUITING") {
+  const hostActionPending =
+    statusMutation.isPending || finishMutation.isPending;
+
+  // 취소된 매칭
+  if (match.status === "CANCELLED") {
     return (
       <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
-        <div className="flex gap-2">
-          <Button
-            className="flex-1"
-            size="lg"
-            onClick={() => handleStatusClick("CLOSED")}
-            disabled={statusMutation.isPending}
-          >
-            {statusMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              "모집 마감"
+        <Button className="w-full" size="lg" disabled variant="secondary">
+          취소된 모임입니다
+        </Button>
+      </div>
+    );
+  }
+
+  // 종료된 매칭: 후기 미작성 시 CTA (Sprint 4)
+  if (match.status === "FINISHED") {
+    const pendingCount = match.reviewPendingUserIds?.length ?? 0;
+    const showReviewCta = pendingCount > 0 && !!user;
+    return (
+      <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4 space-y-2">
+        {showReviewCta && (
+          <Link
+            href={`/matching/${matchId}/review`}
+            className={cn(
+              buttonVariants({ size: "lg" }),
+              "w-full justify-center no-underline"
             )}
-          </Button>
+          >
+            후기 남기기 ({pendingCount}명)
+          </Link>
+        )}
+        <Button className="w-full" size="lg" disabled variant="secondary">
+          종료된 모임입니다
+        </Button>
+      </div>
+    );
+  }
+
+  // 방장: 모집 마감·취소(RECRUITING) / 모임 취소만(CLOSED — Sprint3 §7-1 전용 API)
+  const isHostRecruiting =
+    user?.id === match.hostId && match.status === "RECRUITING";
+  const isHostClosed = user?.id === match.hostId && match.status === "CLOSED";
+  if (isHostRecruiting || isHostClosed) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
+        <div
+          className={cn(
+            "flex flex-col gap-2",
+            isHostRecruiting && "sm:flex-row sm:gap-2"
+          )}
+        >
+          {isHostRecruiting && (
+            <Button
+              className="w-full sm:flex-1"
+              size="lg"
+              onClick={() => handleStatusClick("CLOSED")}
+              disabled={hostActionPending}
+            >
+              {statusMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "모집 마감"
+              )}
+            </Button>
+          )}
+          {isHostClosed && match.canFinishMatch && (
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    "모임을 종료하시겠습니까? 종료 후 후기·패널티를 남길 수 있습니다."
+                  )
+                )
+                  return;
+                finishMutation.mutate();
+              }}
+              disabled={hostActionPending}
+            >
+              {finishMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "모임 종료"
+              )}
+            </Button>
+          )}
           <Button
             variant="outline"
-            className="flex-1 border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+            className={cn(
+              "border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive w-full",
+              isHostRecruiting && "sm:flex-1"
+            )}
             size="lg"
             onClick={() => handleStatusClick("CANCELLED")}
-            disabled={statusMutation.isPending}
+            disabled={hostActionPending}
           >
-            {statusMutation.isPending ? (
+            {statusMutation.isPending && !finishMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              "취소"
+              "모임 취소"
             )}
           </Button>
         </div>
@@ -703,8 +883,8 @@ function MatchDetailBottomBar({
     );
   }
 
-  // canApply: 참여/대기 신청
-  if (match.canApply) {
+  // canApply: 참여/대기 신청 (모집 중일 때만 — 백엔드 불일치·상태 일관성)
+  if (match.status === "RECRUITING" && match.canApply) {
     const isFull = match.currentPeople >= match.maxPeople;
     return (
       <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
@@ -759,11 +939,33 @@ function MatchDetailBottomBar({
     );
   }
 
-  // 기본: 비활성 (모집 마감 등)
+  // 모집 마감 단계이나 아직 참여 정보가 없는 경우 (비로그인은 위에서 처리됨)
+  if (match.status === "CLOSED") {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
+        <Button className="w-full" size="lg" disabled variant="secondary">
+          모집 마감된 모임입니다
+        </Button>
+      </div>
+    );
+  }
+
+  // 모집 중이나 신청 불가 (정원·조건 등)
+  if (match.status === "RECRUITING") {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
+        <Button className="w-full" size="lg" disabled variant="secondary">
+          지금은 참여 신청할 수 없습니다
+        </Button>
+      </div>
+    );
+  }
+
+  // 기본: 비활성
   return (
     <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
-      <Button className="w-full" size="lg" disabled>
-        참여 신청하기
+      <Button className="w-full" size="lg" disabled variant="secondary">
+        참여 신청 불가
       </Button>
     </div>
   );

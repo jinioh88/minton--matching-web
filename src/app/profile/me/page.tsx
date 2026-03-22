@@ -1,9 +1,12 @@
 "use client";
 
+import { AccountRestrictionBanner } from "@/components/profile/account-restriction-banner";
 import { ActivitySummary } from "@/components/profile/activity-summary";
 import { ProfileDetailSettings } from "@/components/profile/profile-detail-settings";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { ProfileMenu } from "@/components/profile/profile-menu";
+import { ReceivedPenaltiesSummary } from "@/components/profile/received-penalties-summary";
+import { ReceivedReviewsSummary } from "@/components/profile/received-reviews-summary";
 import { useRequireAuth } from "@/hooks/use-require-auth";
 import { apiClient } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
@@ -104,15 +107,34 @@ export default function MyProfilePage() {
           ratingScore={profile.ratingScore}
           joinedAt={profile.joinedAt}
           createdAt={profile.createdAt}
+          showCautionBadge={profile.showCautionBadge === true}
           onProfileImageUpdate={handleProfileImageUpdate}
         />
 
         <div className="space-y-6 border-t pt-6">
+          <AccountRestrictionBanner profile={profile} />
+
           <ActivitySummary
             hostedCount={0}
             joinedCount={0}
             penaltyCount={profile.penaltyCount ?? 0}
           />
+
+          <div className="border-t pt-6">
+            <ReceivedReviewsSummary
+              userId={profile.id}
+              receivedReviewCount={profile.receivedReviewCount}
+              listHref="/profile/me/reviews"
+            />
+          </div>
+
+          <div className="border-t pt-6">
+            <ReceivedPenaltiesSummary
+              userId={profile.id}
+              penaltyCount={profile.penaltyCount}
+              listHref="/profile/me/penalties"
+            />
+          </div>
 
           <div className="border-t pt-6">
             <ProfileDetailSettings profile={profile} onUpdate={handleProfileUpdate} />
