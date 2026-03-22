@@ -1,5 +1,6 @@
 "use client";
 
+import { PARTICIPATION_STATUS_SHORT_LABELS } from "@/lib/participation";
 import type { MatchListItem } from "@/types/match";
 import { Clock, MapPin, Users } from "lucide-react";
 import Link from "next/link";
@@ -53,6 +54,18 @@ const LEVEL_BADGE_STYLES: Record<string, string> = {
   BEGINNER: "bg-green-400 text-white",
 };
 
+function parseTargetLevels(targetLevels?: string): string[] {
+  if (!targetLevels?.trim()) return [];
+  return targetLevels
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function levelBadgeLabel(code: string): string {
+  return code === "BEGINNER" ? "초" : code;
+}
+
 type MatchCardProps = {
   match: MatchListItem;
 };
@@ -65,10 +78,7 @@ export function MatchCard({ match }: MatchCardProps) {
   const timeDisplay = match.durationMin
     ? `${match.startTime} ~ ${endTime} (${durationStr})`
     : match.startTime;
-  const primaryLevel = match.targetLevels?.split(",")[0]?.trim();
-  const levelBadgeStyle = primaryLevel
-    ? LEVEL_BADGE_STYLES[primaryLevel] ?? "bg-primary text-primary-foreground"
-    : "";
+  const targetLevelCodes = parseTargetLevels(match.targetLevels);
 
   return (
     <Link
@@ -78,19 +88,31 @@ export function MatchCard({ match }: MatchCardProps) {
       <div className="flex gap-4">
         <div className="min-w-0 flex-1">
           {/* 상태 + 급수 배지 */}
-          <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
             <span
               className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ${statusStyle}`}
             >
               {statusLabel}
             </span>
-            {primaryLevel && (
-              <span
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${levelBadgeStyle}`}
-              >
-                {primaryLevel === "BEGINNER" ? "초" : primaryLevel}
+            {match.myParticipation && (
+              <span className="rounded-md bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
+                {match.myParticipation.status === "WAITING"
+                  ? `대기열 ${match.myParticipation.queueOrder}번`
+                  : PARTICIPATION_STATUS_SHORT_LABELS[match.myParticipation.status] ??
+                    match.myParticipation.status}
               </span>
             )}
+            {targetLevelCodes.map((code) => (
+              <span
+                key={code}
+                className={`flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-1 text-xs font-bold ${
+                  LEVEL_BADGE_STYLES[code] ??
+                  "bg-primary text-primary-foreground"
+                }`}
+              >
+                {levelBadgeLabel(code)}
+              </span>
+            ))}
           </div>
 
           <h3 className="line-clamp-2 text-sm font-semibold">{match.title}</h3>

@@ -1,9 +1,25 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { getMatchDetail, updateMatchStatus } from "@/lib/api";
+import { ApplicationCard } from "@/components/matching/application-card";
+import { ApplyParticipationModal } from "@/components/matching/apply-participation-modal";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  applyParticipation,
+  cancelParticipation,
+  acceptOffer,
+  rejectOffer,
+  getMatchDetail,
+  getApplications,
+  getParticipationErrorMessage,
+  updateMatchStatus,
+  updateParticipation,
+} from "@/lib/api";
+import { PARTICIPATION_STATUS_LABELS } from "@/lib/participation";
 import { getRegionName } from "@/lib/regions";
+import { cn } from "@/lib/utils";
+import { useOfferRemainingMs, formatRemaining } from "@/hooks/use-offer-remaining-ms";
 import { useAuthStore } from "@/stores/authStore";
+import type { MatchDetail } from "@/types/match";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
@@ -14,9 +30,11 @@ import {
   Info,
   Coins,
   Loader2,
+  Pencil,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const COST_LABELS: Record<string, string> = {
   SPLIT_EQUAL: "1/N 정산",
@@ -64,6 +82,27 @@ export default function MatchingDetailPage() {
     enabled: !!matchId && /^\d+$/.test(matchId),
   });
 
+  const isHost = !!match && !!user && user.id === match.hostId;
+  const { data: applications = [] } = useQuery({
+    queryKey: ["applications", matchId],
+    queryFn: () => getApplications(Number(matchId)),
+    enabled:
+      !!matchId &&
+      /^\d+$/.test(matchId) &&
+      !!match &&
+      isHost &&
+      match.status === "RECRUITING",
+  });
+
+  const [applyModalOpen, setApplyModalOpen] = useState(false);
+  const [receivedAt, setReceivedAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (match?.serverTime) {
+      setReceivedAt(Date.now());
+    }
+  }, [match?.serverTime]);
+
   const statusMutation = useMutation({
     mutationFn: (status: "CLOSED" | "CANCELLED") =>
       updateMatchStatus(Number(matchId), status),
@@ -74,6 +113,77 @@ export default function MatchingDetailPage() {
     onError: (err) => {
       const msg = err instanceof Error ? err.message : "상태 변경에 실패했습니다.";
       window.alert(msg);
+    },
+  });
+
+  const applyMutation = useMutation({
+    mutationFn: (applyMessage?: string) =>
+      applyParticipation(Number(matchId), applyMessage),
+    onSuccess: () => {
+      setApplyModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["match", matchId] });
+      queryClient.invalidateQueries({ queryKey: ["matches"] });
+    },
+    onError: (err) => {
+      window.alert(getParticipationErrorMessage(err));
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: () => cancelParticipation(Number(matchId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["match", matchId] });
+      queryClient.invalidateQueries({ queryKey: ["matches"] });
+    },
+    onError: (err) => {
+      window.alert(getParticipationErrorMessage(err));
+    },
+  });
+
+  const acceptOfferMutation = useMutation({
+    mutationFn: () => acceptOffer(Number(matchId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["match", matchId] });
+      queryClient.invalidateQueries({ queryKey: ["matches"] });
+    },
+    onError: (err) => {
+      const msg = getParticipationErrorMessage(err);
+      window.alert(msg);
+      // OFFER_EXPIRED 시 자동 새로고침
+      if ((err as { response?: { data?: { code?: string } } })?.response?.data?.code === "OFFER_EXPIRED") {
+        queryClient.invalidateQueries({ queryKey: ["match", matchId] });
+      }
+    },
+  });
+
+  const rejectOfferMutation = useMutation({
+    mutationFn: () => rejectOffer(Number(matchId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["match", matchId] });
+      queryClient.invalidateQueries({ queryKey: ["matches"] });
+    },
+    onError: (err) => {
+      window.alert(getParticipationErrorMessage(err));
+    },
+  });
+
+  const updateParticipationMutation = useMutation({
+    mutationFn: ({
+      participationId,
+      action,
+    }: {
+      participationId: number;
+      action: "ACCEPT" | "REJECT" | "KICK";
+    }) => updateParticipation(Number(matchId), participationId, action),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["match", matchId] });
+      queryClient.invalidateQueries({ queryKey: ["matches"] });
+      queryClient.invalidateQueries({
+        queryKey: ["applications", matchId],
+      });
+    },
+    onError: (err) => {
+      window.alert(getParticipationErrorMessage(err));
     },
   });
 
@@ -131,7 +241,19 @@ export default function MatchingDetailPage() {
           <ChevronLeft className="h-5 w-5" />
           <span className="text-sm">뒤로</span>
         </Link>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-1">
+          {isHost && match.status === "RECRUITING" && (
+            <Link
+              href={`/matching/${matchId}/edit`}
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "sm" }),
+                "gap-1 px-2 no-underline"
+              )}
+            >
+              <Pencil className="h-4 w-4" />
+              <span className="text-xs">수정</span>
+            </Link>
+          )}
           <Button variant="ghost" size="icon-xs" aria-label="공유">
             <Share2 className="h-4 w-4" />
           </Button>
@@ -258,77 +380,391 @@ export default function MatchingDetailPage() {
           </div>
         </section>
 
+        {/* 방장 신청 목록 */}
+        {isHost && match.status === "RECRUITING" && (
+          <section className="mb-6">
+            <p className="mb-3 text-sm font-medium text-muted-foreground">
+              신청 목록 ({applications.length}명)
+            </p>
+            {applications.length === 0 ? (
+              <div className="rounded-xl border border-dashed bg-muted/30 p-8 text-center text-sm text-muted-foreground">
+                아직 신청이 없습니다
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {applications.map((item) => (
+                  <ApplicationCard
+                    key={item.participationId}
+                    item={item}
+                    serverTime={match.serverTime}
+                    receivedAt={receivedAt}
+                    onAccept={(participationId) =>
+                      updateParticipationMutation.mutate({
+                        participationId,
+                        action: "ACCEPT",
+                      })
+                    }
+                    onReject={(participationId) =>
+                      updateParticipationMutation.mutate({
+                        participationId,
+                        action: "REJECT",
+                      })
+                    }
+                    isAccepting={
+                      updateParticipationMutation.isPending &&
+                      updateParticipationMutation.variables?.participationId ===
+                        item.participationId &&
+                      updateParticipationMutation.variables?.action === "ACCEPT"
+                    }
+                    isRejecting={
+                      updateParticipationMutation.isPending &&
+                      updateParticipationMutation.variables?.participationId ===
+                        item.participationId &&
+                      updateParticipationMutation.variables?.action === "REJECT"
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 내 참여 상태 (로그인 사용자) */}
+        {match.myParticipation && (
+          <section className="mb-6 rounded-xl border bg-muted/30 p-4">
+            <p className="text-sm font-medium text-muted-foreground">
+              내 참여 상태
+            </p>
+            <p className="mt-1 font-semibold">
+              {match.myParticipation.status === "WAITING"
+                ? `대기열 ${match.myParticipation.queueOrder}번`
+                : PARTICIPATION_STATUS_LABELS[match.myParticipation.status]}
+            </p>
+            {match.myParticipation.applyMessage && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                &quot;{match.myParticipation.applyMessage}&quot;
+              </p>
+            )}
+          </section>
+        )}
+
         {/* 확정된 참여자 */}
         {match.confirmedParticipants.length > 0 && (
           <section className="mb-24">
             <p className="mb-3 text-sm font-medium text-muted-foreground">
               확정된 참여자 ({match.confirmedParticipants.length}명)
             </p>
-            <div className="flex flex-wrap gap-2">
-              {match.confirmedParticipants.map((p) => (
-                <Link
-                  key={p.participationId}
-                  href={`/profile/${p.userId}`}
-                  className="flex items-center gap-2 rounded-full bg-muted/50 px-3 py-2 transition-colors hover:bg-muted"
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
-                    {p.profileImg ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={p.profileImg}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-xs font-medium">
-                        {p.nickname.charAt(0)}
+            <div className="flex flex-col gap-2">
+              {match.confirmedParticipants.map((p) => {
+                const showKick =
+                  isHost &&
+                  (match.status === "RECRUITING" || match.status === "CLOSED") &&
+                  p.userId !== match.hostId;
+                const isKicking =
+                  updateParticipationMutation.isPending &&
+                  updateParticipationMutation.variables?.participationId ===
+                    p.participationId &&
+                  updateParticipationMutation.variables?.action === "KICK";
+
+                return (
+                  <div
+                    key={p.participationId}
+                    className="flex items-center justify-between gap-2 rounded-xl border bg-muted/30 px-3 py-2"
+                  >
+                    <Link
+                      href={`/profile/${p.userId}`}
+                      className="flex min-w-0 flex-1 items-center gap-2 transition-opacity hover:opacity-80"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
+                        {p.profileImg ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={p.profileImg}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-xs font-medium">
+                            {p.nickname.charAt(0)}
+                          </span>
+                        )}
+                      </div>
+                      <span className="truncate text-sm font-medium">
+                        {p.nickname}
                       </span>
+                    </Link>
+                    {showKick && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0 border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        disabled={isKicking}
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              `${p.nickname}님을 매칭에서 추방하시겠습니까?`
+                            )
+                          )
+                            return;
+                          updateParticipationMutation.mutate({
+                            participationId: p.participationId,
+                            action: "KICK",
+                          });
+                        }}
+                      >
+                        {isKicking ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "추방"
+                        )}
+                      </Button>
                     )}
                   </div>
-                  <span className="text-sm font-medium">{p.nickname}</span>
-                </Link>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}
 
         {/* 하단 고정 버튼 */}
-        <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
-          {user?.id === match.hostId && match.status === "RECRUITING" ? (
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                size="lg"
-                onClick={() => handleStatusClick("CLOSED")}
-                disabled={statusMutation.isPending}
-              >
-                {statusMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "모집 마감"
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1 border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
-                size="lg"
-                onClick={() => handleStatusClick("CANCELLED")}
-                disabled={statusMutation.isPending}
-              >
-                {statusMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "취소"
-                )}
-              </Button>
-            </div>
-          ) : (
-            <Button className="w-full" size="lg" disabled>
-              참여 신청하기
-            </Button>
-          )}
-        </div>
+        <MatchDetailBottomBar
+          match={match}
+          user={user}
+          statusMutation={statusMutation}
+          applyMutation={applyMutation}
+          cancelMutation={cancelMutation}
+          acceptOfferMutation={acceptOfferMutation}
+          rejectOfferMutation={rejectOfferMutation}
+          setApplyModalOpen={setApplyModalOpen}
+          handleStatusClick={handleStatusClick}
+          receivedAt={receivedAt}
+        />
       </main>
+
+      <ApplyParticipationModal
+        open={applyModalOpen}
+        onClose={() => setApplyModalOpen(false)}
+        onSubmit={(msg) => applyMutation.mutate(msg)}
+        isPending={applyMutation.isPending}
+        isFull={match.currentPeople >= match.maxPeople}
+      />
+    </div>
+  );
+}
+
+type BottomBarProps = {
+  match: MatchDetail;
+  user: { id: number } | null;
+  statusMutation: { isPending: boolean; mutate: (s: "CLOSED" | "CANCELLED") => void };
+  applyMutation: { isPending: boolean };
+  cancelMutation: { isPending: boolean; mutate: () => void };
+  acceptOfferMutation: { isPending: boolean; mutate: () => void };
+  rejectOfferMutation: { isPending: boolean; mutate: () => void };
+  setApplyModalOpen: (v: boolean) => void;
+  handleStatusClick: (s: "CLOSED" | "CANCELLED") => void;
+  receivedAt: number | null;
+};
+
+/** 하단 버튼 영역 (참여/취소/수락·거절) */
+function MatchDetailBottomBar({
+  match,
+  user,
+  statusMutation,
+  applyMutation,
+  cancelMutation,
+  acceptOfferMutation,
+  rejectOfferMutation,
+  setApplyModalOpen,
+  handleStatusClick,
+  receivedAt,
+}: BottomBarProps) {
+  const remainingMs = useOfferRemainingMs(
+    match.myParticipation?.offerExpiresAt,
+    match.serverTime,
+    receivedAt
+  );
+  const remainingLabel = formatRemaining(remainingMs);
+  const isUrgent = remainingMs != null && remainingMs > 0 && remainingMs < 60_000;
+
+  // 방장: 모집 마감/취소
+  if (user?.id === match.hostId && match.status === "RECRUITING") {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
+        <div className="flex gap-2">
+          <Button
+            className="flex-1"
+            size="lg"
+            onClick={() => handleStatusClick("CLOSED")}
+            disabled={statusMutation.isPending}
+          >
+            {statusMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              "모집 마감"
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1 border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+            size="lg"
+            onClick={() => handleStatusClick("CANCELLED")}
+            disabled={statusMutation.isPending}
+          >
+            {statusMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              "취소"
+            )}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // 비로그인: 참여 비활성화
+  if (!user) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
+        <Button className="w-full" size="lg" disabled>
+          로그인 후 참여 신청
+        </Button>
+      </div>
+    );
+  }
+
+  // RESERVED: 수락/거절 (hasWaitingOffer)
+  if (match.hasWaitingOffer) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
+        <div className="mb-3 text-center">
+          <p className="text-sm font-medium">
+            참여 기회가 왔어요! 15분 내 수락해 주세요
+          </p>
+          <p
+            className={`mt-1 text-sm ${isUrgent ? "font-semibold text-destructive animate-pulse" : "text-muted-foreground"}`}
+          >
+            {remainingLabel}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="flex-1"
+            size="lg"
+            onClick={() => rejectOfferMutation.mutate()}
+            disabled={rejectOfferMutation.isPending || remainingMs === 0}
+          >
+            {rejectOfferMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              "거절하기"
+            )}
+          </Button>
+          <Button
+            className="flex-1"
+            size="lg"
+            onClick={() => acceptOfferMutation.mutate()}
+            disabled={acceptOfferMutation.isPending || remainingMs === 0}
+          >
+            {acceptOfferMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              "수락하기"
+            )}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // 긴급 모드 + WAITING: 선착순 참여 기회 (fallback: isEmergencyMode 미제공 시 hasWaitingOffer로 판단)
+  if (
+    match.myParticipation?.status === "WAITING" &&
+    (match.isEmergencyMode || match.hasWaitingOffer)
+  ) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
+        <p className="mb-3 text-center text-sm font-medium">
+          현재 선착순으로 참여 기회가 열렸습니다!
+        </p>
+        <Button
+          className="w-full"
+          size="lg"
+          onClick={() => acceptOfferMutation.mutate()}
+          disabled={acceptOfferMutation.isPending}
+        >
+          {acceptOfferMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            "참여 기회 잡기"
+          )}
+        </Button>
+      </div>
+    );
+  }
+
+  // canApply: 참여/대기 신청
+  if (match.canApply) {
+    const isFull = match.currentPeople >= match.maxPeople;
+    return (
+      <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
+        <Button
+          className="w-full"
+          size="lg"
+          onClick={() => setApplyModalOpen(true)}
+          disabled={applyMutation.isPending}
+        >
+          {isFull ? "대기 신청하기" : "참여 신청하기"}
+        </Button>
+      </div>
+    );
+  }
+
+  // myParticipation 있음: 취소 또는 상태 표시
+  if (match.myParticipation) {
+    const status = match.myParticipation.status;
+    const label =
+      status === "WAITING"
+        ? `대기열 ${match.myParticipation.queueOrder}번`
+        : PARTICIPATION_STATUS_LABELS[status];
+
+    return (
+      <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
+        {match.canCancel ? (
+          <div className="flex justify-center">
+            <Button
+              variant="outline"
+              size="lg"
+              className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => {
+                if (window.confirm("참여를 취소하시겠습니까?")) {
+                  cancelMutation.mutate();
+                }
+              }}
+              disabled={cancelMutation.isPending}
+            >
+              {cancelMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "참여 취소"
+              )}
+            </Button>
+          </div>
+        ) : (
+          <Button className="w-full" size="lg" disabled>
+            {label}
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  // 기본: 비활성 (모집 마감 등)
+  return (
+    <div className="fixed bottom-0 left-0 right-0 border-t bg-background p-4">
+      <Button className="w-full" size="lg" disabled>
+        참여 신청하기
+      </Button>
     </div>
   );
 }
