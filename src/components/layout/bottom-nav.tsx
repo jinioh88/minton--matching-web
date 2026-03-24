@@ -14,6 +14,7 @@ function shouldShowNav(pathname: string): boolean {
   if (pathname === "/") return true;
   if (pathname === "/matching") return true;
   if (pathname.startsWith("/chat")) return true;
+  if (pathname.startsWith("/notifications")) return true;
   if (pathname === "/profile/me") return true;
   return false;
 }
@@ -31,7 +32,7 @@ export function BottomNav() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background pb-[env(safe-area-inset-bottom,0px)]">
       <div className="mx-auto flex max-w-lg items-center justify-around px-4 py-2">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;

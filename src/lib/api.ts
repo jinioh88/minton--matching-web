@@ -16,7 +16,17 @@ import type {
   MatchListResponse,
   UpdateMatchRequest,
 } from "@/types/match";
+import type {
+  ChatMessagePageResponse,
+  ChatMessagePatchRequest,
+  ChatMessageResponse,
+  ChatMessageSendRequest,
+  ChatRoomDetailResponse,
+  ChatRoomListItemResponse,
+} from "@/types/chat";
+import type { NotificationResponse } from "@/types/notification";
 import type { PageResponse } from "@/types/page";
+import type { SpringPage } from "@/types/spring-page";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api";
@@ -107,9 +117,19 @@ const SPRINT4_API_ERROR_MESSAGES: Record<string, string> = {
   NOT_FOUND: "요청한 정보를 찾을 수 없습니다.",
 };
 
+/** Sprint 5 채팅·알림 API 에러 코드 */
+const SPRINT5_API_ERROR_MESSAGES: Record<string, string> = {
+  CHAT_ACCESS_DENIED: "이 채팅방을 볼 수 있는 권한이 없습니다.",
+  CHAT_ROOM_NOT_FOUND: "채팅방을 찾을 수 없습니다.",
+  MESSAGE_NOT_FOUND: "메시지를 찾을 수 없습니다.",
+  NOTIFICATION_NOT_FOUND: "알림을 찾을 수 없습니다.",
+  VALIDATION_ERROR: "입력값을 확인해 주세요.",
+};
+
 const API_ERROR_MESSAGES: Record<string, string> = {
   ...PARTICIPATION_ERROR_MESSAGES,
   ...SPRINT4_API_ERROR_MESSAGES,
+  ...SPRINT5_API_ERROR_MESSAGES,
 };
 
 /** Phase 7: 참여 신청 — 제재 코드는 재시도 불가 안내 */
@@ -155,6 +175,17 @@ export function getParticipationErrorMessage(
   }
   if (err instanceof Error) return err.message;
   return "요청 처리 중 오류가 발생했습니다.";
+}
+
+/** Sprint 5: 채팅방 조회·매칭→채팅 진입 (`CHAT_*` 우선 안내) */
+export function getChatApiErrorMessage(err: unknown): string {
+  if (err instanceof AxiosError) {
+    const code = (err.response?.data as { code?: string })?.code;
+    if (code === "CHAT_ROOM_NOT_FOUND" || code === "CHAT_ACCESS_DENIED") {
+      return "아직 채팅방이 없거나 들어갈 권한이 없습니다. 매칭에 확정된 뒤 이용해 주세요.";
+    }
+  }
+  return getParticipationErrorMessage(err);
 }
 
 /** 프로필 이미지 업로드 (Multipart). 업데이트된 프로필 반환 */
@@ -420,5 +451,167 @@ export async function getApplications(
   );
   const data = res.data?.data;
   if (!data) throw new Error("신청 목록을 불러오는데 실패했습니다.");
+  return data;
+}
+
+// --- Sprint 5: 채팅·알림 (REST, Spring `Page` 목록) ---
+
+/** 내 채팅방 목록 (`roomId` 내림차순 페이지) */
+export async function getChatRooms(params?: {
+  page?: number;
+  size?: number;
+}): Promise<SpringPage<ChatRoomListItemResponse>> {
+  const res = await apiClient.get<ApiResponse<SpringPage<ChatRoomListItemResponse>>>(
+    "/chat/rooms",
+    {
+      params: {
+        page: params?.page ?? 0,
+        size: params?.size ?? 20,
+      },
+    }
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("채팅 목록을 불러오는데 실패했습니다.");
+  return data;
+}
+
+/** 채팅방 상세: 공지 + 최근 메시지 1건 */
+export async function getChatRoom(
+  roomId: number
+): Promise<ChatRoomDetailResponse> {
+  const res = await apiClient.get<ApiResponse<ChatRoomDetailResponse>>(
+    `/chat/rooms/${roomId}`
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("채팅방 정보를 불러오는데 실패했습니다.");
+  return data;
+}
+
+/** 매칭 ID로 채팅방 상세 (진입 UX용, 본문은 `getChatRoom`과 동일) */
+export async function getMatchChat(
+  matchId: number
+): Promise<ChatRoomDetailResponse> {
+  const res = await apiClient.get<ApiResponse<ChatRoomDetailResponse>>(
+    `/matches/${matchId}/chat`
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("채팅방 정보를 불러오는데 실패했습니다.");
+  return data;
+}
+
+/**
+ * 메시지 목록. `cursor`: 과거 페이지 / `afterId`: 폴링(신규만).
+ * 동시 사용은 권장되지 않음 — `afterId`가 있으면 서버가 폴링 분기.
+ */
+export async function getChatMessages(
+  roomId: number,
+  params?: { cursor?: number; afterId?: number; size?: number }
+): Promise<ChatMessagePageResponse> {
+  const res = await apiClient.get<ApiResponse<ChatMessagePageResponse>>(
+    `/chat/rooms/${roomId}/messages`,
+    {
+      params: {
+        cursor: params?.cursor,
+        afterId: params?.afterId,
+        size: params?.size ?? 30,
+      },
+    }
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("메시지를 불러오는데 실패했습니다.");
+  return data;
+}
+
+/** 메시지 전송 (응답 본문 = 방금 보낸 메시지) */
+export async function sendChatMessage(
+  roomId: number,
+  body: ChatMessageSendRequest
+): Promise<ChatMessageResponse> {
+  const res = await apiClient.post<ApiResponse<ChatMessageResponse>>(
+    `/chat/rooms/${roomId}/messages`,
+    body
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("메시지 전송에 실패했습니다.");
+  return data;
+}
+
+export async function patchChatMessage(
+  roomId: number,
+  messageId: number,
+  body: ChatMessagePatchRequest
+): Promise<ChatMessageResponse> {
+  const res = await apiClient.patch<ApiResponse<ChatMessageResponse>>(
+    `/chat/rooms/${roomId}/messages/${messageId}`,
+    body
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("메시지 수정에 실패했습니다.");
+  return data;
+}
+
+export async function deleteChatMessage(
+  roomId: number,
+  messageId: number
+): Promise<void> {
+  const res = await apiClient.delete<ApiResponse<null>>(
+    `/chat/rooms/${roomId}/messages/${messageId}`
+  );
+  if (!res.data?.success) {
+    throw new Error("메시지 삭제에 실패했습니다.");
+  }
+}
+
+/** 내 알림 목록 (`createdAt` 내림차순) */
+export async function getNotifications(params?: {
+  page?: number;
+  size?: number;
+}): Promise<SpringPage<NotificationResponse>> {
+  const res = await apiClient.get<
+    ApiResponse<SpringPage<NotificationResponse>>
+  >("/notifications", {
+    params: {
+      page: params?.page ?? 0,
+      size: params?.size ?? 20,
+    },
+  });
+  const data = res.data?.data;
+  if (!data) throw new Error("알림 목록을 불러오는데 실패했습니다.");
+  return data;
+}
+
+/** 미읽음 알림 건수 */
+export async function getUnreadNotificationCount(): Promise<number> {
+  const res = await apiClient.get<ApiResponse<number>>(
+    "/notifications/unread-count"
+  );
+  const data = res.data?.data;
+  if (typeof data !== "number") {
+    throw new Error("미읽음 수를 불러오는데 실패했습니다.");
+  }
+  return data;
+}
+
+/** 단건 읽음 */
+export async function markNotificationRead(
+  notificationId: number
+): Promise<void> {
+  const res = await apiClient.patch<ApiResponse<unknown>>(
+    `/notifications/${notificationId}/read`
+  );
+  if (!res.data?.success) {
+    throw new Error("알림 읽음 처리에 실패했습니다.");
+  }
+}
+
+/** 미읽음 일괄 읽음 — 갱신된 행 수 */
+export async function markAllNotificationsRead(): Promise<number> {
+  const res = await apiClient.post<ApiResponse<number>>(
+    "/notifications/read-all"
+  );
+  const data = res.data?.data;
+  if (typeof data !== "number") {
+    throw new Error("알림 읽음 처리에 실패했습니다.");
+  }
   return data;
 }

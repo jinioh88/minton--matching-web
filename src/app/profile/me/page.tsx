@@ -12,6 +12,7 @@ import { apiClient } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 import type { Profile } from "@/types/profile";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { NotificationsNavLink } from "@/components/notifications/notifications-nav-link";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -89,14 +90,15 @@ export default function MyProfilePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 flex items-center border-b bg-background/95 px-4 py-3 backdrop-blur">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b bg-background/95 px-4 py-3 backdrop-blur">
         <Link
-          href="/"
+          href="/matching"
           className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-5 w-5" />
           <span className="text-sm">뒤로</span>
         </Link>
+        <NotificationsNavLink />
       </header>
 
       <main className="mx-auto max-w-lg px-4 py-6">

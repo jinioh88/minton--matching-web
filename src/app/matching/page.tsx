@@ -2,6 +2,7 @@
 
 import { MatchCard } from "@/components/matching/match-card";
 import { Button } from "@/components/ui/button";
+import { NotificationsNavLink } from "@/components/notifications/notifications-nav-link";
 import { useHasHydrated } from "@/hooks/use-has-hydrated";
 import { getMatchList } from "@/lib/api";
 import { getRegionName } from "@/lib/regions";
@@ -9,7 +10,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { apiClient } from "@/lib/api";
 import type { Profile } from "@/types/profile";
 import { useQuery } from "@tanstack/react-query";
-import { Bell, Calendar, HelpCircle, Plus, Settings } from "lucide-react";
+import { Calendar, HelpCircle, Plus, Settings } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -254,13 +255,7 @@ function MatchingListContent() {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <Link
-              href="/chat"
-              className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-muted"
-              aria-label="알림"
-            >
-              <Bell className="h-5 w-5" />
-            </Link>
+            <NotificationsNavLink />
             <Link
               href="/profile/me"
               className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-muted"

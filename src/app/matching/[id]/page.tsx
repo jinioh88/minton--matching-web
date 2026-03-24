@@ -18,6 +18,7 @@ import {
 } from "@/lib/api";
 import { showApiErrorToast } from "@/lib/show-api-error-toast";
 import { PARTICIPATION_STATUS_LABELS } from "@/lib/participation";
+import { COST_POLICY_LABELS } from "@/lib/cost-policy-labels";
 import { getMatchDisplayStatus } from "@/lib/match-display-status";
 import { getRegionName } from "@/lib/regions";
 import { cn } from "@/lib/utils";
@@ -34,17 +35,12 @@ import {
   Info,
   Coins,
   Loader2,
+  MessageCircle,
   Pencil,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-
-const COST_LABELS: Record<string, string> = {
-  SPLIT_EQUAL: "1/N 정산",
-  HOST_PAYS: "방장 부담",
-  GUEST_PAYS: "참가자 부담",
-};
 
 /** startTime + durationMin → endTime "21:00" */
 function getEndTime(startTime: string, durationMin: number): string {
@@ -265,7 +261,12 @@ export default function MatchingDetailPage() {
     );
   }
 
-  const costLabel = COST_LABELS[match.costPolicy] ?? match.costPolicy;
+  const costLabel =
+    COST_POLICY_LABELS[match.costPolicy] ?? match.costPolicy;
+  const canOpenChat =
+    !!user &&
+    (user.id === match.hostId ||
+      match.myParticipation?.status === "ACCEPTED");
   const locationDisplay = match.locationName || getRegionName(match.regionCode) || "-";
   const matchStatusBadge = getMatchDisplayStatus(match);
   const displayConfirmed = withHostInConfirmedParticipants(match);
@@ -281,6 +282,18 @@ export default function MatchingDetailPage() {
           <span className="text-sm">뒤로</span>
         </Link>
         <div className="flex items-center gap-1">
+          {canOpenChat && (
+            <Link
+              href={`/chat/from-match/${matchId}`}
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "icon" }),
+                "text-muted-foreground hover:text-foreground"
+              )}
+              aria-label="채팅방으로 이동"
+            >
+              <MessageCircle className="h-5 w-5" />
+            </Link>
+          )}
           {isHost && match.status === "RECRUITING" && (
             <Link
               href={`/matching/${matchId}/edit`}
@@ -404,6 +417,24 @@ export default function MatchingDetailPage() {
             </div>
           </div>
         </section>
+
+        {canOpenChat && (
+          <section className="mb-6">
+            <Link
+              href={`/chat/from-match/${matchId}`}
+              className={cn(
+                buttonVariants({ variant: "secondary", size: "lg" }),
+                "flex w-full items-center justify-center gap-2 no-underline"
+              )}
+            >
+              <MessageCircle className="h-5 w-5 shrink-0" />
+              채팅하기
+            </Link>
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              확정된 참가자와 모임 안내·일정을 채팅에서 이어가요.
+            </p>
+          </section>
+        )}
 
         {/* 상세 내용 및 조건 */}
         <section className="mb-6 rounded-xl border bg-card p-4">
