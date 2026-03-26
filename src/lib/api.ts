@@ -5,7 +5,9 @@ import type { Profile } from "@/types/profile";
 import type {
   CreateReviewRequest,
   CreateReviewResponse,
+  PendingReviewItem,
   ReceivedReviewItem,
+  WrittenReviewListItem,
 } from "@/types/review";
 import type {
   ApplicationItem,
@@ -14,6 +16,7 @@ import type {
   CreateMatchResponse,
   MatchDetail,
   MatchListResponse,
+  MatchStatus,
   UpdateMatchRequest,
 } from "@/types/match";
 import type {
@@ -182,7 +185,16 @@ export function getChatApiErrorMessage(err: unknown): string {
   if (err instanceof AxiosError) {
     const code = (err.response?.data as { code?: string })?.code;
     if (code === "CHAT_ROOM_NOT_FOUND" || code === "CHAT_ACCESS_DENIED") {
-      return "아직 채팅방이 없거나 들어갈 권한이 없습니다. 매칭에 확정된 뒤 이용해 주세요.";
+      return "채팅방을 찾을 수 없거나 이 방에 들어갈 권한이 없습니다. 채팅 목록에서 참여 중인 방을 선택해 주세요.";
+    }
+    const status = err.response?.status;
+    const url = err.config?.url ?? "";
+    if (
+      status === 404 &&
+      typeof url === "string" &&
+      /\/chat\/rooms\/\d+(?:$|[?#])/.test(url)
+    ) {
+      return "존재하지 않는 채팅방입니다. 주소가 맞는지 확인하거나 채팅 목록으로 돌아가 주세요.";
     }
   }
   return getParticipationErrorMessage(err);
@@ -230,7 +242,10 @@ export async function createMatch(
   return data;
 }
 
-/** 매칭 목록 조회 */
+/**
+ * 매칭 목록 조회
+ * @param params.level 쉼표 구분 급수 (예: `B,C`). OR 조건·토큰 완전 일치 — Sprint2-API 목록 조회
+ */
 export async function getMatchList(params?: {
   regionCode?: string;
   dateFrom?: string;
@@ -377,6 +392,95 @@ export async function getUserProfile(userId: number): Promise<Profile> {
   const res = await apiClient.get<ApiResponse<Profile>>(`/users/${userId}`);
   const data = res.data?.data;
   if (!data) throw new Error("프로필을 불러오는데 실패했습니다.");
+  return data;
+}
+
+// --- Sprint 7: 마이페이지 집계·매칭 내역·후기 허브 ---
+
+/** 내가 방장인 매칭 목록 (Spring `Page` → `MatchListResponse`) */
+export async function getMyHostedMatches(params?: {
+  status?: MatchStatus;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  size?: number;
+}): Promise<MatchListResponse> {
+  const res = await apiClient.get<ApiResponse<MatchListResponse>>(
+    "/users/me/matches/hosted",
+    {
+      params: {
+        status: params?.status,
+        dateFrom: params?.dateFrom,
+        dateTo: params?.dateTo,
+        page: params?.page ?? 0,
+        size: params?.size ?? 20,
+      },
+    }
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("개설 매칭 목록을 불러오는데 실패했습니다.");
+  return data;
+}
+
+/** 확정 참여(ACCEPTED) 매칭 목록 */
+export async function getMyParticipatedMatches(params?: {
+  status?: MatchStatus;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  size?: number;
+}): Promise<MatchListResponse> {
+  const res = await apiClient.get<ApiResponse<MatchListResponse>>(
+    "/users/me/matches/participated",
+    {
+      params: {
+        status: params?.status,
+        dateFrom: params?.dateFrom,
+        dateTo: params?.dateTo,
+        page: params?.page ?? 0,
+        size: params?.size ?? 20,
+      },
+    }
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("참여 매칭 목록을 불러오는데 실패했습니다.");
+  return data;
+}
+
+/** 내가 작성한 후기 목록 */
+export async function getMyWrittenReviews(params?: {
+  page?: number;
+  size?: number;
+}): Promise<PageResponse<WrittenReviewListItem>> {
+  const res = await apiClient.get<
+    ApiResponse<PageResponse<WrittenReviewListItem>>
+  >("/users/me/reviews/written", {
+    params: {
+      page: params?.page ?? 0,
+      size: params?.size ?? 20,
+    },
+  });
+  const data = res.data?.data;
+  if (!data) throw new Error("작성한 후기 목록을 불러오는데 실패했습니다.");
+  return data;
+}
+
+/** 후기 작성 대기 목록 */
+export async function getMyPendingReviews(params?: {
+  page?: number;
+  size?: number;
+}): Promise<PageResponse<PendingReviewItem>> {
+  const res = await apiClient.get<ApiResponse<PageResponse<PendingReviewItem>>>(
+    "/users/me/reviews/pending",
+    {
+      params: {
+        page: params?.page ?? 0,
+        size: params?.size ?? 20,
+      },
+    }
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("작성 대기 목록을 불러오는데 실패했습니다.");
   return data;
 }
 

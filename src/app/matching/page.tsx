@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button";
 import { NotificationsNavLink } from "@/components/notifications/notifications-nav-link";
 import { useHasHydrated } from "@/hooks/use-has-hydrated";
 import { getMatchList } from "@/lib/api";
+import {
+  parseMatchListLevelParam,
+  serializeMatchListLevelParam,
+} from "@/lib/match-level-query";
 import { getRegionName } from "@/lib/regions";
 import { useAuthStore } from "@/stores/authStore";
 import { apiClient } from "@/lib/api";
@@ -81,8 +85,8 @@ function MatchingListContent() {
     if (from && to) return [new Date(from), new Date(to)];
     return [null, null];
   });
-  const [level, setLevel] = useState(
-    () => searchParams.get("level") ?? ""
+  const [selectedLevels, setSelectedLevels] = useState(() =>
+    parseMatchListLevelParam(searchParams.get("level"))
   );
   const [recruitingOnly, setRecruitingOnly] = useState(
     () => searchParams.get("recruitingOnly") === "true"
@@ -141,17 +145,18 @@ function MatchingListContent() {
       regionCode,
       dateMode,
       dateRange,
-      level,
+      serializeMatchListLevelParam(selectedLevels),
       recruitingOnly,
       page,
     ],
     queryFn: () => {
       const dateParams = getDateParams();
+      const levelParam = serializeMatchListLevelParam(selectedLevels);
       return getMatchList({
         regionCode: regionCode || undefined,
         dateFrom: dateParams.dateFrom,
         dateTo: dateParams.dateTo,
-        level: level || undefined,
+        level: levelParam || undefined,
         page,
         size: PAGE_SIZE,
       });
@@ -212,11 +217,19 @@ function MatchingListContent() {
     }
   };
 
-  const handleLevelChange = (v: string) => {
-    setLevel(v);
+  const handleLevelToggle = (optValue: string) => {
     setPage(0);
-    updateUrl({ level: v });
-    setShowLevelFilter(false);
+    if (optValue === "") {
+      setSelectedLevels([]);
+      updateUrl({ level: "" });
+      setShowLevelFilter(false);
+      return;
+    }
+    const next = selectedLevels.includes(optValue)
+      ? selectedLevels.filter((x) => x !== optValue)
+      : [...selectedLevels, optValue];
+    setSelectedLevels(next);
+    updateUrl({ level: serializeMatchListLevelParam(next) });
   };
 
   const handleRecruitingOnlyChange = () => {
@@ -327,41 +340,49 @@ function MatchingListContent() {
               className="rounded-lg border border-input bg-background px-3 py-1.5 text-xs hover:bg-muted"
             >
               급수 선택
-              {level && (
+              {selectedLevels.length > 0 && (
                 <span className="ml-1 text-primary">
-                  ({LEVEL_OPTIONS.find((o) => o.value === level)?.label ?? level})
+                  (
+                  {selectedLevels
+                    .map(
+                      (v) =>
+                        LEVEL_OPTIONS.find((o) => o.value === v)?.label ?? v
+                    )
+                    .join(", ")}
+                  )
                 </span>
               )}
             </button>
             {showLevelFilter && (
-              <div className="absolute left-0 top-full z-10 mt-1 flex flex-wrap gap-1 rounded-lg border bg-popover p-2 shadow-md">
-                {LEVEL_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value || "all"}
-                    type="button"
-                    onClick={() => handleLevelChange(opt.value)}
-                    className={`rounded px-2 py-1 text-xs ${
-                      level === opt.value ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+              <div className="absolute left-0 top-full z-10 mt-1 max-w-[min(100vw-2rem,280px)] rounded-lg border bg-popover p-2 shadow-md">
+                <div className="flex flex-wrap gap-1">
+                  {LEVEL_OPTIONS.map((opt) => {
+                    const selected =
+                      opt.value !== "" && selectedLevels.includes(opt.value);
+                    return (
+                      <button
+                        key={opt.value || "all"}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleLevelToggle(opt.value);
+                        }}
+                        className={`rounded px-2 py-1 text-xs ${
+                          opt.value === "" && selectedLevels.length === 0
+                            ? "bg-primary text-primary-foreground"
+                            : selected
+                              ? "bg-primary text-primary-foreground"
+                              : "hover:bg-muted"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
-          <button
-            type="button"
-            className="rounded-lg border border-input bg-background px-3 py-1.5 text-xs hover:bg-muted"
-          >
-            시간대
-          </button>
-          <button
-            type="button"
-            className="rounded-lg border border-input bg-background px-3 py-1.5 text-xs hover:bg-muted"
-          >
-            성별
-          </button>
           <button
             type="button"
             onClick={handleRecruitingOnlyChange}

@@ -103,6 +103,9 @@ export default function MatchReviewPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["match", matchIdParam] });
       queryClient.invalidateQueries({ queryKey: ["matches"] });
+      queryClient.invalidateQueries({ queryKey: ["myReviews"] });
+      queryClient.invalidateQueries({ queryKey: ["myMatches"] });
+      queryClient.invalidateQueries({ queryKey: ["profile", "me"] });
       router.push(`/matching/${matchIdParam}`);
     },
     onError: (err) => {

@@ -121,7 +121,8 @@ export type MatchListItem = {
   hostProfileImg?: string;
   hostRatingScore?: number;
   hostMannerTags?: string[];
-  status: MatchStatus;
+  /** 목록 DTO에 누락 시 카드에 "상태 미제공" — API 명세상 필수 권장 */
+  status?: MatchStatus;
   /** Sprint 3: 목록 API에 포함 시 내 참여 상태 표시용 */
   myParticipation?: MyParticipationSummary | null;
 };

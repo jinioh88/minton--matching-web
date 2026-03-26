@@ -1,6 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useStomp } from "@/contexts/stomp-context";
+import { useStompChatRoom } from "@/hooks/use-stomp-chat-room";
 import {
   deleteChatMessage,
   getChatApiErrorMessage,
@@ -47,6 +49,16 @@ function isNearBottom(el: HTMLElement, thresholdPx = 140): boolean {
 
 type MessagesInfinite = InfiniteData<ChatMessagePageResponse>;
 
+function compareChatMessages(
+  a: ChatMessageResponse,
+  b: ChatMessageResponse
+): number {
+  const ta = new Date(a.createdAt).getTime();
+  const tb = new Date(b.createdAt).getTime();
+  if (ta !== tb) return ta - tb;
+  return a.messageId - b.messageId;
+}
+
 function mergeMessages(
   pages: { messages: ChatMessageResponse[] }[]
 ): ChatMessageResponse[] {
@@ -56,7 +68,7 @@ function mergeMessages(
       map.set(m.messageId, m);
     }
   }
-  return [...map.values()].sort((a, b) => a.messageId - b.messageId);
+  return [...map.values()].sort(compareChatMessages);
 }
 
 function canEditByTime(m: ChatMessageResponse): boolean {
@@ -78,6 +90,9 @@ export function ChatMessageThread({
 }: ChatMessageThreadProps) {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const { isConnected: stompConnected, publishChatMessage } = useStomp();
+  const stompConnectedRef = useRef(false);
+  stompConnectedRef.current = stompConnected;
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composeTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -100,6 +115,7 @@ export function ChatMessageThread({
   const {
     data,
     isPending,
+    isFetching,
     isError,
     error,
     fetchNextPage,
@@ -116,7 +132,10 @@ export function ChatMessageThread({
     initialPageParam: undefined as number | undefined,
     getNextPageParam: (lastPage) =>
       lastPage.nextCursor != null ? lastPage.nextCursor : undefined,
+    retry: false,
   });
+
+  const isMessagesInitialLoad = isPending && isFetching;
 
   const messages = useMemo(
     () => (data?.pages ? mergeMessages(data.pages) : []),
@@ -126,6 +145,55 @@ export function ChatMessageThread({
   const scrollToEnd = useCallback((behavior: ScrollBehavior = "smooth") => {
     endRef.current?.scrollIntoView({ block: "end", behavior });
   }, []);
+
+  const handleStompMessage = useCallback(
+    (msg: ChatMessageResponse) => {
+      if (msg.roomId !== roomId) return;
+      const key = chatMessagesQueryKey(roomId);
+      const el = scrollRef.current;
+      const stickToBottom = el ? isNearBottom(el) : true;
+
+      const before = queryClient.getQueryData<MessagesInfinite>(key);
+      if (!before?.pages.length) {
+        void queryClient.invalidateQueries({
+          queryKey: ["chat", "messages", roomId],
+        });
+      } else {
+        queryClient.setQueryData<MessagesInfinite>(key, (old) => {
+          if (!old?.pages.length) return old;
+          const dup = old.pages.some((p) =>
+            p.messages.some((m) => m.messageId === msg.messageId)
+          );
+          if (dup) return old;
+          const pages = old.pages.map((p, i) => {
+            if (i !== 0) return p;
+            const msgs = p.messages
+              .filter((m) => {
+                if (m.messageId >= 0) return true;
+                if (m.senderId === msg.senderId && m.content === msg.content) {
+                  return false;
+                }
+                return true;
+              })
+              .concat(msg)
+              .sort(compareChatMessages);
+            return { ...p, messages: msgs };
+          });
+          return { ...old, pages };
+        });
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["chat", "rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["chat", "room", roomId] });
+
+      if (stickToBottom) {
+        requestAnimationFrame(() => scrollToEnd("smooth"));
+      }
+    },
+    [roomId, queryClient, scrollToEnd]
+  );
+
+  useStompChatRoom(roomId, handleStompMessage);
 
   const focusComposeInput = useCallback(() => {
     requestAnimationFrame(() => {
@@ -143,9 +211,11 @@ export function ChatMessageThread({
   const maxMsgIdForPollRef = useRef(0);
   maxMsgIdForPollRef.current = maxMsgId;
 
+  /** Sprint6: STOMP 연결 유지 중에는 afterId 폴링 중단 */
   const canPollNewMessages =
+    !stompConnected &&
     !chatLocked &&
-    !isPending &&
+    !isMessagesInitialLoad &&
     !isError &&
     maxMsgId > 0;
 
@@ -168,6 +238,7 @@ export function ChatMessageThread({
         : POLL_INTERVAL_MS,
     refetchOnWindowFocus: true,
     staleTime: 0,
+    retry: false,
   });
 
   useEffect(() => {
@@ -204,9 +275,7 @@ export function ChatMessageThread({
         i === 0
           ? {
               ...p,
-              messages: [...p.messages, ...toAdd].sort(
-                (a, b) => a.messageId - b.messageId
-              ),
+              messages: [...p.messages, ...toAdd].sort(compareChatMessages),
             }
           : p
       );
@@ -220,14 +289,67 @@ export function ChatMessageThread({
     }
   }, [pollSnapshot, roomId, queryClient, scrollToEnd]);
 
+  /** Sprint6: 재연결 직후 afterId 1회 갭 보정 */
+  const prevStompConnected = useRef(false);
+  useEffect(() => {
+    const wasConnected = prevStompConnected.current;
+    prevStompConnected.current = stompConnected;
+    if (!stompConnected || wasConnected) return;
+    const after = maxMsgIdForPollRef.current;
+    if (after <= 0) return;
+
+    void (async () => {
+      try {
+        const snap = await getChatMessages(roomId, {
+          afterId: after,
+          size: MESSAGE_PAGE_SIZE,
+        });
+        if (!snap.messages?.length) return;
+        const key = chatMessagesQueryKey(roomId);
+        const prev = queryClient.getQueryData<MessagesInfinite>(key);
+        if (!prev?.pages.length) {
+          await queryClient.invalidateQueries({
+            queryKey: ["chat", "messages", roomId],
+          });
+          return;
+        }
+        const existing = new Set(
+          prev.pages.flatMap((p) => p.messages.map((m) => m.messageId))
+        );
+        const toAdd = snap.messages.filter((m) => !existing.has(m.messageId));
+        if (!toAdd.length) return;
+        const el = scrollRef.current;
+        const stickToBottom = el ? isNearBottom(el) : true;
+        queryClient.setQueryData<MessagesInfinite>(key, (old) => {
+          if (!old?.pages.length) return old;
+          const pages = old.pages.map((p, i) =>
+            i === 0
+              ? {
+                  ...p,
+                  messages: [...p.messages, ...toAdd].sort(compareChatMessages),
+                }
+              : p
+          );
+          return { ...old, pages };
+        });
+        queryClient.invalidateQueries({ queryKey: ["chat", "rooms"] });
+        if (stickToBottom) {
+          requestAnimationFrame(() => scrollToEnd("smooth"));
+        }
+      } catch {
+        // 이후 수신으로 수렴
+      }
+    })();
+  }, [stompConnected, roomId, queryClient, scrollToEnd]);
+
   const loadingOlderRef = useRef(false);
 
   /** 채팅방 진입 후·수정 취소 후 등 — 바로 입력 가능하도록 */
   useEffect(() => {
-    if (isPending || isError || chatLocked || editingId != null) return;
+    if (isMessagesInitialLoad || isError || chatLocked || editingId != null) return;
     focusComposeInput();
   }, [
-    isPending,
+    isMessagesInitialLoad,
     isError,
     chatLocked,
     editingId,
@@ -244,12 +366,12 @@ export function ChatMessageThread({
   }, [editingId]);
 
   useEffect(() => {
-    if (isPending || isFetchingNextPage || messages.length === 0) return;
+    if (isMessagesInitialLoad || isFetchingNextPage || messages.length === 0) return;
     if (!initialScrollDone.current) {
       initialScrollDone.current = true;
       requestAnimationFrame(() => scrollToEnd("auto"));
     }
-  }, [isPending, isFetchingNextPage, messages.length, scrollToEnd]);
+  }, [isMessagesInitialLoad, isFetchingNextPage, messages.length, scrollToEnd]);
 
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -279,40 +401,101 @@ export function ChatMessageThread({
   }, [queryClient, roomId]);
 
   const sendMutation = useMutation({
-    mutationFn: (content: string) =>
-      sendChatMessage(roomId, { content }),
+    mutationFn: async (content: string) => {
+      if (stompConnectedRef.current) {
+        const ok = publishChatMessage({
+          roomId,
+          content,
+          messageType: "TEXT",
+        });
+        if (!ok) {
+          throw new Error(
+            "실시간 연결이 준비되지 않았습니다. 잠시 후 다시 시도해 주세요."
+          );
+        }
+        return null;
+      }
+      return sendChatMessage(roomId, { content });
+    },
+    onMutate: async (content) => {
+      if (!stompConnectedRef.current || !user) return undefined;
+      const tempId = -Math.floor(Date.now() * 1000 + Math.random() * 1000);
+      const optimistic: ChatMessageResponse = {
+        messageId: tempId,
+        roomId,
+        senderId: user.id,
+        senderNickname: user.nickname ?? "나",
+        content,
+        messageType: "TEXT",
+        createdAt: new Date().toISOString(),
+        editedAt: null,
+      };
+      const key = chatMessagesQueryKey(roomId);
+      queryClient.setQueryData<MessagesInfinite>(key, (old) => {
+        if (!old?.pages.length) return old;
+        const pages = old.pages.map((p, i) =>
+          i === 0
+            ? {
+                ...p,
+                messages: [...p.messages, optimistic].sort(compareChatMessages),
+              }
+            : p
+        );
+        return { ...old, pages };
+      });
+      return { tempId };
+    },
     onSuccess: (newMsg) => {
       focusComposeAfterSendRef.current = true;
       setDraft("");
-      const key = chatMessagesQueryKey(roomId);
-      const prev = queryClient.getQueryData<MessagesInfinite>(key);
-      if (!prev?.pages?.length) {
-        queryClient.invalidateQueries({ queryKey: ["chat", "messages", roomId] });
-      } else {
+      if (newMsg) {
+        const key = chatMessagesQueryKey(roomId);
+        const prev = queryClient.getQueryData<MessagesInfinite>(key);
+        if (!prev?.pages?.length) {
+          queryClient.invalidateQueries({
+            queryKey: ["chat", "messages", roomId],
+          });
+        } else {
+          queryClient.setQueryData<MessagesInfinite>(key, (old) => {
+            if (!old?.pages.length) return old;
+            const already = old.pages.some((p) =>
+              p.messages.some((m) => m.messageId === newMsg.messageId)
+            );
+            if (already) return old;
+            const pages = old.pages.map((p, i) =>
+              i === 0
+                ? {
+                    ...p,
+                    messages: [...p.messages, newMsg].sort(compareChatMessages),
+                  }
+                : p
+            );
+            return { ...old, pages };
+          });
+        }
+      }
+      invalidateChatRoomMeta();
+      requestAnimationFrame(() => scrollToEnd("smooth"));
+    },
+    onError: (err, _content, ctx) => {
+      if (ctx?.tempId != null) {
+        const key = chatMessagesQueryKey(roomId);
         queryClient.setQueryData<MessagesInfinite>(key, (old) => {
           if (!old?.pages.length) return old;
-          const already = old.pages.some((p) =>
-            p.messages.some((m) => m.messageId === newMsg.messageId)
-          );
-          if (already) return old;
           const pages = old.pages.map((p, i) =>
             i === 0
               ? {
                   ...p,
-                  messages: [...p.messages, newMsg].sort(
-                    (a, b) => a.messageId - b.messageId
-                  ),
+                  messages: p.messages.filter((m) => m.messageId !== ctx.tempId),
                 }
               : p
           );
           return { ...old, pages };
         });
       }
-      invalidateChatRoomMeta();
-      requestAnimationFrame(() => scrollToEnd("smooth"));
-    },
-    onError: (err) => {
-      toast.error(getChatApiErrorMessage(err));
+      const msg =
+        err instanceof Error ? err.message : getChatApiErrorMessage(err);
+      toast.error(msg);
     },
   });
 
@@ -430,7 +613,7 @@ export function ChatMessageThread({
         onScroll={onScroll}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-2 pb-2"
       >
-        {isPending ? (
+        {isMessagesInitialLoad ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-7 w-7 animate-spin text-primary" />
           </div>
@@ -474,7 +657,7 @@ export function ChatMessageThread({
               <ul className="flex flex-col gap-2 pb-2">
                 {messages.map((m) => (
                   <MessageBubble
-                    key={m.messageId}
+                    key={`${m.messageId}-${m.createdAt}`}
                     message={m}
                     isOwn={user?.id === m.senderId}
                     chatLocked={chatLocked}

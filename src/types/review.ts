@@ -52,3 +52,30 @@ export type ReceivedReviewItem = {
 };
 
 export type ReceivedReviewsPage = PageResponse<ReceivedReviewItem>;
+
+/** Sprint 7 — `ReviewerPublicSummaryResponse` */
+export type ReviewerPublicSummary = {
+  userId: number;
+  nickname: string;
+  profileImg?: string;
+};
+
+/** Sprint 7 — `GET /users/me/reviews/written` 행 */
+export type WrittenReviewListItem = {
+  reviewId: number;
+  match: ReviewMatchSummary;
+  reviewee: ReviewerPublicSummary;
+  sentiment: ReviewSentiment;
+  score: number;
+  hashtags: string[];
+  detail: string | null;
+  createdAt: string;
+};
+
+/** Sprint 7 — `GET /users/me/reviews/pending` 행 */
+export type PendingReviewItem = {
+  matchId: number;
+  match: ReviewMatchSummary;
+  revieweeId: number;
+  reviewee: ReviewerPublicSummary;
+};

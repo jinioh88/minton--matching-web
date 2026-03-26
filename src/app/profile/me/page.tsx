@@ -117,8 +117,8 @@ export default function MyProfilePage() {
           <AccountRestrictionBanner profile={profile} />
 
           <ActivitySummary
-            hostedCount={0}
-            joinedCount={0}
+            hostedCount={profile.hostedMatchCount ?? 0}
+            joinedCount={profile.participatedMatchCount ?? 0}
             penaltyCount={profile.penaltyCount ?? 0}
           />
 

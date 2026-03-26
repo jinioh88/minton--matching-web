@@ -1,6 +1,7 @@
 "use client";
 
 import { ChatRoomRow } from "@/components/chat/chat-room-row";
+import { StompStatusChip } from "@/components/chat/stomp-status-chip";
 import { NotificationsNavLink } from "@/components/notifications/notifications-nav-link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useHasHydrated } from "@/hooks/use-has-hydrated";
@@ -55,6 +56,9 @@ export default function ChatPage() {
             <p className="text-sm text-muted-foreground">
               확정된 매칭의 채팅방 목록입니다
             </p>
+            <div className="mt-1">
+              <StompStatusChip />
+            </div>
           </div>
           {!showLoginGate ? <NotificationsNavLink /> : null}
         </div>

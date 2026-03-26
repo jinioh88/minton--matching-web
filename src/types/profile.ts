@@ -26,4 +26,8 @@ export type Profile = {
   /** Sprint 4 — 본인·타인 */
   showCautionBadge?: boolean;
   receivedReviewCount?: number;
+  /** Sprint 7 — `GET /users/me` 본인만 */
+  hostedMatchCount?: number;
+  /** Sprint 7 — `GET /users/me` 본인만 */
+  participatedMatchCount?: number;
 };

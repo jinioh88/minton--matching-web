@@ -1,6 +1,7 @@
 "use client";
 
 import { SonnerToaster } from "@/components/ui/sonner-toaster";
+import { StompProvider } from "@/contexts/stomp-context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -9,8 +10,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
-      <SonnerToaster />
+      <StompProvider>
+        {children}
+        <SonnerToaster />
+      </StompProvider>
     </QueryClientProvider>
   );
 }

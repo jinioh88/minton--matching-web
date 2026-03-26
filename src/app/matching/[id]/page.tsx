@@ -3,6 +3,7 @@
 import { ApplicationCard } from "@/components/matching/application-card";
 import { ApplyParticipationModal } from "@/components/matching/apply-participation-modal";
 import { HostPenaltyButton } from "@/components/matching/host-penalty-button";
+import { NotificationsNavLink } from "@/components/notifications/notifications-nav-link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   applyParticipation,
@@ -15,6 +16,7 @@ import {
   closeMatch,
   finishMatch,
   updateParticipation,
+  getParticipationErrorMessage,
 } from "@/lib/api";
 import { showApiErrorToast } from "@/lib/show-api-error-toast";
 import { PARTICIPATION_STATUS_LABELS } from "@/lib/participation";
@@ -26,6 +28,7 @@ import { useOfferRemainingMs, formatRemaining } from "@/hooks/use-offer-remainin
 import { useAuthStore } from "@/stores/authStore";
 import type { MatchDetail, MatchParticipant } from "@/types/match";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AxiosError } from "axios";
 import {
   ChevronLeft,
   MapPin,
@@ -96,11 +99,25 @@ export default function MatchingDetailPage() {
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
 
-  const { data: match, isLoading, error } = useQuery({
+  const {
+    data: match,
+    isPending,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["match", matchId],
     queryFn: () => getMatchDetail(Number(matchId)),
     enabled: !!matchId && /^\d+$/.test(matchId),
+    retry: (_failureCount, err) => {
+      const status = err instanceof AxiosError ? err.response?.status : undefined;
+      if (status != null && status >= 400 && status < 500) return false;
+      return _failureCount < 2;
+    },
   });
+
+  const isMatchLoading = isPending && isFetching;
 
   const isHost = !!match && !!user && user.id === match.hostId;
   const { data: applications = [] } = useQuery({
@@ -242,21 +259,36 @@ export default function MatchingDetailPage() {
     );
   }
 
-  if (isLoading || !match) {
+  if (isError) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 py-10 text-center">
+        <p className="text-sm text-muted-foreground">
+          이 매칭을 불러올 수 없습니다.
+        </p>
+        <p className="text-destructive">{getParticipationErrorMessage(error)}</p>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link href="/matching">
+            <Button variant="default" className="w-full sm:w-auto">
+              매칭 목록으로
+            </Button>
+          </Link>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={() => refetch()}
+          >
+            다시 시도
+          </Button>
+        </div>
       </div>
     );
   }
 
-  if (error) {
+  if (isMatchLoading || !match) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-8">
-        <p className="text-destructive">매칭 정보를 불러오는데 실패했습니다.</p>
-        <Link href="/matching">
-          <Button variant="outline">목록으로</Button>
-        </Link>
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -282,6 +314,7 @@ export default function MatchingDetailPage() {
           <span className="text-sm">뒤로</span>
         </Link>
         <div className="flex items-center gap-1">
+          <NotificationsNavLink />
           {canOpenChat && (
             <Link
               href={`/chat/from-match/${matchId}`}

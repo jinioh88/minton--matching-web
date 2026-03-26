@@ -18,7 +18,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" className={roboto.variable}>
-      <body className="antialiased font-sans">
+      {/* 확장 프로그램이 body에 속성을 붙이면 하이드레이션 경고가 날 수 있음 (예: cz-shortcut-listen) */}
+      <body className="antialiased font-sans" suppressHydrationWarning>
         <Providers>
           <div className="min-h-screen pb-16">
             {children}

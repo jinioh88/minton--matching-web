@@ -13,8 +13,18 @@
 | POST | /api/users/me/profile-image | **필요** | 프로필 이미지 업로드 (Multipart) |
 | POST | /api/matches | **필요** | 매칭 생성 |
 | GET | /api/matches | 불필요 | 매칭 목록 조회 (필터, 페이징) |
-| GET | /api/matches/{matchId} | 불필요 | 매칭 상세 조회 |
-| PATCH | /api/matches/{matchId} | **필요** | 매칭 상태 변경 (방장 전용) |
+| GET | /api/matches/{matchId} | 불필요 | 매칭 상세 조회 (로그인 시 myParticipation 등 추가 - Sprint 3) |
+
+---
+
+## 매칭 인원 정책 (maxPeople, currentPeople)
+
+| 필드 | 정의 |
+|------|------|
+| **maxPeople** | 방장 포함 총 확정 인원 상한. 예: 4이면 방장 1명 + 게스트 최대 3명 = 총 4명 |
+| **currentPeople** | 방장 포함 현재 확정 인원 수. ACCEPTED 게스트 수 + 방장(1) |
+
+정원 체크: `currentPeople < maxPeople`일 때만 수락 가능. 정원 초과 시 **MATCH_FULL(400)** "정원이 가득 찼습니다".
 
 ---
 
@@ -124,7 +134,7 @@
 | durationMin | Integer | O | 소요 시간(분, 30~240) |
 | locationName | String | X | 장소명 (최대 200자) |
 | regionCode | String | O | 행정구역 코드 (7~10자리 숫자) |
-| maxPeople | Integer | O | 모집 인원 (2~12) |
+| maxPeople | Integer | O | **방장 포함** 총 확정 인원 상한 (2~12). 예: 4이면 방장 1명 + 게스트 최대 3명 |
 | targetLevels | String | X | 희망 급수 (예: "A,B,C") |
 | costPolicy | CostPolicy | O | 비용 분담 방식 (enum) |
 | imageUrl | String | X | 매칭 대표 이미지 URL (이미지 파일 업로드 API `POST /api/files/upload` 응답의 `url` 값 사용) |
@@ -195,7 +205,7 @@
 | regionCode | String | X | 지역 필터 (행정구역 코드). 단일 또는 다중(쉼표 구분) |
 | dateFrom | LocalDate | X | 시작 날짜 (yyyy-MM-dd) |
 | dateTo | LocalDate | X | 종료 날짜 (yyyy-MM-dd) |
-| level | String | X | 급수 필터 (targetLevels에 포함) |
+| level | String | X | 급수 필터. 쉼표로 여러 값 가능 (예: `B,C`). 각 토큰은 `A`·`B`·`C`·`D`·`BEGINNER`와 **완전 일치**할 때만 `targetLevels`와 매칭 (부분 문자열 매칭 아님 → `B`로 `BEGINNER` 오탐 없음). 공백은 trim, 대소문자 무시 |
 | page | int | X | 페이지 (기본 0) |
 | size | int | X | 페이지 크기 (기본 20) |
 
@@ -203,6 +213,7 @@
 
 - **비로그인**: regionCode 쿼리로 전달 또는 미전달 시 전체 목록
 - **로그인**: regionCode 미전달 시 interestLoc1/2를 기본 regionCode로 적용, query param으로 override 가능
+- **level**: `targetLevels`는 매칭 생성 시 저장한 쉼표 구분 문자열(예: `BEGINNER,D,C`)이다. 필터 값을 쉼표로 나눈 뒤 각 토큰을 허용 급수(`A`,`B`,`C`,`D`,`BEGINNER`)로 정규화·검증하고, 매칭의 `targetLevels` 안에서 **해당 급수가 독립 토큰으로 존재할 때만** 포함한다. 토큰이 여러 개면 **OR**(하나라도 일치하면 목록에 포함). 허용 목록에 없는 토큰은 무시한다(유효 토큰이 하나도 없으면 level 조건 없이 조회).
 
 **Response 예시**
 
@@ -243,9 +254,10 @@
 
 **GET** `/api/matches/{matchId}`
 
-매칭 상세 정보를 조회합니다. **비로그인/로그인 모두 접근 가능.**
+매칭 상세 정보를 조회합니다. **비로그인/로그인 모두 접근 가능.**  
+로그인 시 `myParticipation`, `canApply`, `canCancel`, `hasWaitingOffer` 필드가 추가됩니다. (Sprint 3 확장)
 
-**인증** 불필요
+**인증** 불필요 (선택 시 추가 정보 제공)
 
 **Path Parameters**
 
@@ -295,36 +307,32 @@
       }
     ],
     "waitingList": [],
-    "waitingCount": 0
+    "waitingCount": 0,
+    "myParticipation": null,
+    "canApply": true,
+    "canCancel": false,
+    "hasWaitingOffer": false,
+    "canFinishMatch": false,
+    "reviewPendingUserIds": []
   }
 }
 ```
 
----
+**로그인 시 추가 필드** (Sprint 3)
 
-### 6. 매칭 상태 변경
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| myParticipation | Object | participationId, status, queueOrder, applyMessage, offerExpiresAt |
+| canApply | Boolean | 참여 신청 가능 여부 |
+| canCancel | Boolean | 취소 가능 여부 |
+| hasWaitingOffer | Boolean | 예약 수락 대기 여부 (RESERVED) |
 
-**PATCH** `/api/matches/{matchId}`
+**Sprint 4 추가 필드** (항상 포함, 비로그인 시에도)
 
-방장이 매칭 상태를 변경합니다. **모집 중(RECRUITING)** 상태에서만 호출 가능합니다.
-
-**인증** 필요 (`Authorization: Bearer {accessToken}`)
-
-**Path Parameters**
-
-| 파라미터 | 타입 | 설명 |
-|----------|------|------|
-| matchId | Long | 매칭 ID |
-
-**Request Body**
-
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| status | MatchStatus | O | CLOSED(모집 마감) 또는 CANCELLED(취소) |
-
-**Response**: 매칭 상세 조회와 동일 (업데이트된 MatchDetail)
-
-**에러**: 방장이 아닌 경우, 이미 CLOSED/CANCELLED/FINISHED 상태인 경우 403 등
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| canFinishMatch | boolean | [모임 종료] 가능 여부. 방장·CLOSED·수동 종료 시각 조건과 `PATCH .../finish` 판정 일치. |
+| reviewPendingUserIds | Long[] | 종료된 매칭에서 로그인 사용자가 확정 참여자일 때, 본인이 아직 후기를 쓰지 않은 대상 `userId` 목록. 상세는 [Sprint4-API.md](./Sprint4-API.md). |
 
 ---
 
@@ -355,6 +363,8 @@
 | ACCEPTED | 수락됨 (확정) |
 | REJECTED | 거절됨 |
 | WAITING | 대기열 |
+| RESERVED | 참여 기회 부여됨 (15분 내 수락 대기) - Sprint 3 |
+| CANCELLED | 본인 취소 - Sprint 3 |
 
 ### FileUploadType (파일 업로드 용도)
 

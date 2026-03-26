@@ -50,8 +50,14 @@ type MatchCardProps = {
 
 export function MatchCard({ match }: MatchCardProps) {
   const locationDisplay = match.locationName || "-";
-  const { label: statusLabel, className: statusClassName } =
-    getMatchDisplayStatus(match);
+  const statusBadge =
+    match.status != null
+      ? getMatchDisplayStatus({
+          status: match.status,
+          currentPeople: match.currentPeople,
+          maxPeople: match.maxPeople,
+        })
+      : null;
   const endTime = getEndTime(match.startTime, match.durationMin);
   const durationStr = formatDuration(match.durationMin);
   const timeDisplay = match.durationMin
@@ -64,15 +70,21 @@ export function MatchCard({ match }: MatchCardProps) {
       href={`/matching/${match.matchId}`}
       className="block overflow-hidden rounded-xl border bg-card p-4 transition-shadow hover:shadow-md"
     >
-      <div className="flex gap-4">
+      <div className="flex items-start gap-4">
         <div className="min-w-0 flex-1">
           {/* 상태 + 급수 배지 */}
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span
-              className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ${statusClassName}`}
-            >
-              {statusLabel}
-            </span>
+            {statusBadge ? (
+              <span
+                className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ${statusBadge.className}`}
+              >
+                {statusBadge.label}
+              </span>
+            ) : (
+              <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                상태 미제공
+              </span>
+            )}
             {match.myParticipation && (
               <span className="rounded-md bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
                 {match.myParticipation.status === "WAITING"
@@ -151,6 +163,17 @@ export function MatchCard({ match }: MatchCardProps) {
               ))}
             </div>
           )}
+        </div>
+
+        <div className="aspect-square w-28 shrink-0 overflow-hidden rounded-lg bg-muted sm:w-32">
+          {match.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={match.imageUrl}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : null}
         </div>
       </div>
     </Link>

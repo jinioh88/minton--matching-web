@@ -2,6 +2,7 @@
 
 import { ChatMatchNotice } from "@/components/chat/chat-match-notice";
 import { ChatMessageThread } from "@/components/chat/chat-message-thread";
+import { StompStatusChip } from "@/components/chat/stomp-status-chip";
 import { NotificationsNavLink } from "@/components/notifications/notifications-nav-link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useHasHydrated } from "@/hooks/use-has-hydrated";
@@ -28,14 +29,22 @@ export default function ChatRoomPage() {
     !!accessToken &&
     validId;
 
-  const { data, isPending, isError, error, refetch } = useQuery({
+  const {
+    data,
+    isPending,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["chat", "room", roomId],
     queryFn: () => getChatRoom(roomId),
     enabled,
     retry: false,
   });
 
-  const showLoginGate = hasHydrated && (!isAuthenticated || !accessToken);
+  /** v5: disabled 쿼리도 isPending이 true → 실제 요청 중일 때만 전체 로딩 */
+  const isRoomLoading = isPending && isFetching;
 
   if (!validId) {
     return (
@@ -54,7 +63,15 @@ export default function ChatRoomPage() {
     );
   }
 
-  if (showLoginGate) {
+  if (!hasHydrated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !accessToken) {
     return (
       <div className="min-h-screen bg-background px-4 py-12 text-center">
         <p className="text-muted-foreground">로그인 후 채팅방을 열 수 있습니다.</p>
@@ -71,7 +88,7 @@ export default function ChatRoomPage() {
     );
   }
 
-  if (isPending) {
+  if (isRoomLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -88,19 +105,33 @@ export default function ChatRoomPage() {
             className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
           >
             <ChevronLeft className="h-5 w-5" />
-            <span className="text-sm">목록</span>
+            <span className="text-sm">채팅 목록</span>
           </Link>
         </header>
         <div className="mx-auto max-w-lg px-4 py-10 text-center">
-          <p className="text-destructive">{getChatApiErrorMessage(error)}</p>
-          <Button
-            type="button"
-            variant="outline"
-            className="mt-4"
-            onClick={() => refetch()}
-          >
-            다시 시도
-          </Button>
+          <p className="text-sm text-muted-foreground">
+            이 채팅방을 불러올 수 없습니다.
+          </p>
+          <p className="mt-2 text-destructive">{getChatApiErrorMessage(error)}</p>
+          <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <Link
+              href="/chat"
+              className={cn(
+                buttonVariants({ variant: "default" }),
+                "inline-flex w-full no-underline sm:w-auto"
+              )}
+            >
+              채팅 목록으로
+            </Link>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => refetch()}
+            >
+              다시 시도
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -117,9 +148,14 @@ export default function ChatRoomPage() {
             <ChevronLeft className="h-5 w-5" />
             <span className="text-sm">목록</span>
           </Link>
-          <h1 className="min-w-0 flex-1 truncate text-center text-base font-semibold">
-            {data.matchNotice.title}
-          </h1>
+          <div className="min-w-0 flex-1 text-center">
+            <h1 className="truncate text-base font-semibold">
+              {data.matchNotice.title}
+            </h1>
+            <div className="mt-0.5 flex justify-center">
+              <StompStatusChip />
+            </div>
+          </div>
           <div className="flex w-9 shrink-0 justify-end">
             <NotificationsNavLink className="h-9 w-9" />
           </div>
