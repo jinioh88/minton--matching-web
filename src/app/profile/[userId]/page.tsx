@@ -2,6 +2,7 @@
 
 import { ActivitySummary } from "@/components/profile/activity-summary";
 import { ProfileDetailSettings } from "@/components/profile/profile-detail-settings";
+import { ProfileFollowActions } from "@/components/profile/profile-follow-actions";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { ReceivedPenaltiesSummary } from "@/components/profile/received-penalties-summary";
 import { ReceivedReviewsSummary } from "@/components/profile/received-reviews-summary";
@@ -147,6 +148,10 @@ export default function OtherProfilePage() {
           readOnly
           showCautionBadge={profile.showCautionBadge === true}
         />
+
+        <div className="border-t pt-4">
+          <ProfileFollowActions targetUserId={Number(userId)} />
+        </div>
 
         <div className="space-y-6 border-t pt-6">
           <ActivitySummary

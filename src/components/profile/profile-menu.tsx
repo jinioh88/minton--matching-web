@@ -10,6 +10,7 @@ type MenuItem = {
 
 const MENU_ITEMS: MenuItem[] = [
   { label: "매칭 내역", href: "/matching/history" },
+  { label: "팔로잉", href: "/profile/me/friends" },
   { label: "후기 관리", href: "/reviews" },
   { label: "공지사항 및 고객센터", href: "/notice" },
   { label: "계정 관리", href: "/account" },

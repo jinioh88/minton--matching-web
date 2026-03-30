@@ -8,7 +8,9 @@ export type NotificationType =
   | "PARTICIPATION_REJECTED"
   | "WAITLIST_SLOT_OFFER"
   | "WAITLIST_EMERGENCY_OPEN"
-  | "MATCH_CANCELLED";
+  | "MATCH_CANCELLED"
+  | "FRIEND_CREATED_MATCH"
+  | "FRIEND_CONFIRMED_PARTICIPATION";
 
 export type NotificationResponse = {
   notificationId: number;

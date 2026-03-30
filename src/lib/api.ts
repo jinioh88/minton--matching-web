@@ -27,6 +27,7 @@ import type {
   ChatRoomDetailResponse,
   ChatRoomListItemResponse,
 } from "@/types/chat";
+import type { FollowingUserResponse } from "@/types/friendship";
 import type { NotificationResponse } from "@/types/notification";
 import type { PageResponse } from "@/types/page";
 import type { SpringPage } from "@/types/spring-page";
@@ -62,14 +63,16 @@ apiClient.interceptors.response.use(
     const message =
       (err.response?.data as { message?: string })?.message ?? "";
 
-    const isUsersMeRequest =
-      typeof err.config?.url === "string" &&
-      err.config.url.includes("/users/me");
+    /** 404 시 세션 만료로 간주하는 경우: `GET /users/me` 등 본인 프로필 루트만 (팔로우 API 404는 제외) */
+    const requestUrl = typeof err.config?.url === "string" ? err.config.url : "";
+    const pathOnly = requestUrl.split("?")[0];
+    const isUsersMeProfileNotFound =
+      /\/users\/me\/?$/.test(pathOnly) && !pathOnly.includes("/friendships");
 
     const shouldRedirectToLogin =
       status === 401 ||
       status === 403 ||
-      (status === 404 && isUsersMeRequest) ||
+      (status === 404 && isUsersMeProfileNotFound) ||
       message.includes("사용자를 찾을 수 없습니다");
 
     if (shouldRedirectToLogin && typeof window !== "undefined") {
@@ -129,10 +132,18 @@ const SPRINT5_API_ERROR_MESSAGES: Record<string, string> = {
   VALIDATION_ERROR: "입력값을 확인해 주세요.",
 };
 
+/** Sprint 8 친구(팔로우) API */
+const SPRINT8_API_ERROR_MESSAGES: Record<string, string> = {
+  FRIENDSHIP_SELF_NOT_ALLOWED: "자기 자신은 팔로우할 수 없습니다.",
+  FRIENDSHIP_ALREADY_EXISTS: "이미 팔로우한 회원입니다.",
+  FRIENDSHIP_NOT_FOUND: "팔로우 관계를 찾을 수 없습니다.",
+};
+
 const API_ERROR_MESSAGES: Record<string, string> = {
   ...PARTICIPATION_ERROR_MESSAGES,
   ...SPRINT4_API_ERROR_MESSAGES,
   ...SPRINT5_API_ERROR_MESSAGES,
+  ...SPRINT8_API_ERROR_MESSAGES,
 };
 
 /** Phase 7: 참여 신청 — 제재 코드는 재시도 불가 안내 */
@@ -718,4 +729,39 @@ export async function markAllNotificationsRead(): Promise<number> {
     throw new Error("알림 읽음 처리에 실패했습니다.");
   }
   return data;
+}
+
+/** Sprint 8 — 내가 팔로우한 사용자 목록 (최근 팔로우 순) */
+export async function getMyFollowings(): Promise<FollowingUserResponse[]> {
+  const res = await apiClient.get<ApiResponse<FollowingUserResponse[]>>(
+    "/users/me/friendships"
+  );
+  const data = res.data?.data;
+  if (!Array.isArray(data)) {
+    throw new Error("팔로잉 목록을 불러오는데 실패했습니다.");
+  }
+  return data;
+}
+
+/** Sprint 8 — 팔로우 추가 */
+export async function followUser(
+  followingUserId: number
+): Promise<FollowingUserResponse> {
+  const res = await apiClient.post<ApiResponse<FollowingUserResponse>>(
+    "/users/me/friendships",
+    { followingUserId }
+  );
+  const data = res.data?.data;
+  if (!data) throw new Error("팔로우에 실패했습니다.");
+  return data;
+}
+
+/** Sprint 8 — 언팔로우 */
+export async function unfollowUser(followingUserId: number): Promise<void> {
+  const res = await apiClient.delete<ApiResponse<null>>(
+    `/users/me/friendships/${followingUserId}`
+  );
+  if (!res.data?.success) {
+    throw new Error("언팔로우에 실패했습니다.");
+  }
 }
